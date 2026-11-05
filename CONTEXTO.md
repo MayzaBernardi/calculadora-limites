@@ -101,13 +101,14 @@ Confira sempre com `git log --oneline --graph --all`, `git status` e `pytest`.
 Repositório: `git@github.com:MayzaBernardi/calculadora-limites.git` (SSH já
 autenticado). Raiz local: `/root/calculadoraLimites`.
 
-Branches enviadas ao GitHub, encadeadas e **nada mesclado na `main`**:
+Situação das branches no GitHub:
 
-- `main`: só o commit inicial (vazio).
-- `feature/base-projeto`: README, `.gitignore` e `requirements.txt`.
-- `feature/etapa-1-entrada-substituicao`: parte da anterior.
-- `docs/contexto-projeto`: parte da anterior e só acrescenta este arquivo.
-  **É daqui que a Etapa 2 deve sair.**
+- `main`: já contém a base do projeto e a Etapa 1 (PRs #1 e #2 mesclados pela
+  dona do projeto).
+- `docs/contexto-projeto`: só acrescenta este arquivo sobre a `main`. Se o PR
+  dela ainda não foi mesclado, parta dela para a próxima etapa.
+
+Não presuma: rode `git fetch` e confira `git log --oneline --graph --all`.
 
 Ambiente: `backend/.venv` já existe e é ignorado pelo git. Se faltar, rode
 `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` dentro de
@@ -142,7 +143,7 @@ Testes em `backend/testes/test_motor.py`; `pytest.ini` já configura
 
 - **Pouco de cada vez.** Uma etapa por vez, em incrementos pequenos.
 - **Uma branch por feature**, no padrão `feature/etapa-N-nome-curto`, criada a
-  partir da branch da etapa anterior (as etapas dependem umas das outras).
+  partir da branch da etapa anterior (as etapas dependem umas das outras; se a anterior já foi mesclada, parta da `main` atualizada).
 - **Commits pequenos, depois de cada incremento que funciona**, com os testes
   passando. Mensagem em português, no imperativo e com contexto, no estilo
   "Etapa 2: fatoração para 0/0". Termine a mensagem com a linha de co-autoria
@@ -187,8 +188,9 @@ a entrada, se sobrar tempo.
 
 ## 9. Próximo passo
 
-Confirme o estado do repositório (`git status`, `git log --oneline --graph
---all`, `pytest`). Depois crie `feature/etapa-2-zero-sobre-zero` a partir de
-`docs/contexto-projeto` e comece pela identificação de formas indeterminadas
-em `formas.py`, seguida das técnicas de 0/0 uma de cada vez. Faça um commit
-por técnica.
+Rode `git fetch` e confirme o estado do repositório (`git status`,
+`git log --oneline --graph --all`, `pytest`). Depois crie
+`feature/etapa-2-zero-sobre-zero` a partir de `origin/main` (ou de
+`docs/contexto-projeto`, se o PR dela ainda estiver aberto) e comece pela
+identificação de formas indeterminadas em `formas.py`, seguida das técnicas de
+0/0 uma de cada vez. Faça um commit por técnica.
