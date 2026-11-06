@@ -61,6 +61,85 @@ def passo_substituicao_direta(
     )
 
 
+_EXP_LOG = (
+    " Para resolver, usamos f^g = e^(g · ln f)."
+)
+
+_FORMAS = {
+    "0/0": (
+        "Indeterminação 0/0",
+        "O numerador e o denominador tendem a 0. Isso é uma indeterminação "
+        "0/0: o limite pode ser um número, ∞ ou não existir, então precisamos "
+        "simplificar a expressão antes de concluir.",
+        r"\frac{0}{0}",
+    ),
+    "oo/oo": (
+        "Indeterminação ∞/∞",
+        "O numerador e o denominador crescem sem limite em módulo (∞/∞ e "
+        "∞/−∞ também são indeterminações). Precisamos reescrever a expressão "
+        "para decidir o valor.",
+        r"\frac{\infty}{\infty}",
+    ),
+    "k/0": (
+        "Divisão por zero",
+        "O denominador tende a 0 e o numerador tende a um número diferente "
+        "de 0. Não é uma indeterminação: o módulo da função cresce sem "
+        "limite, e falta analisar o sinal (pelos dois lados) para saber se "
+        "o limite existe.",
+        r"\frac{k}{0}, \; k \neq 0",
+    ),
+    "oo/0": (
+        "Divisão de infinito por zero",
+        "O numerador cresce sem limite e o denominador tende a 0. Não é "
+        "uma indeterminação: o módulo da função cresce sem limite, mas "
+        "falta analisar os sinais pelos dois lados.",
+        r"\frac{\infty}{0}",
+    ),
+    "0*oo": (
+        "Indeterminação 0 · ∞",
+        "Um fator tende a 0 e o outro cresce sem limite. Isso é uma "
+        "indeterminação 0 · ∞; vamos reescrever o produto como um quociente.",
+        r"0 \cdot \infty",
+    ),
+    "oo-oo": (
+        "Indeterminação ∞ − ∞",
+        "Os termos tendem a infinitos de sinais opostos. Isso é uma "
+        "indeterminação ∞ − ∞; vamos juntar os termos em uma só expressão.",
+        r"\infty - \infty",
+    ),
+    "1^oo": (
+        "Indeterminação 1^∞",
+        "A base tende a 1 e o expoente cresce sem limite. Isso é uma "
+        "indeterminação 1^∞." + _EXP_LOG,
+        r"1^{\infty}",
+    ),
+    "0^0": (
+        "Indeterminação 0^0",
+        "A base e o expoente tendem a 0. Mesmo que o SymPy avalie 0^0 como "
+        "1, no limite isso é uma indeterminação." + _EXP_LOG,
+        r"0^{0}",
+    ),
+    "oo^0": (
+        "Indeterminação ∞^0",
+        "A base cresce sem limite e o expoente tende a 0. Isso é uma "
+        "indeterminação ∞^0." + _EXP_LOG,
+        r"\infty^{0}",
+    ),
+}
+
+_FORMAS_COM_REGRA_EXP = {"1^oo", "0^0", "oo^0"}
+
+
+def passo_forma_indeterminada(
+    expressao: sp.Expr, ponto: sp.Expr, forma: str
+) -> Passo:
+    titulo, explicacao, forma_tex = _FORMAS[forma]
+    latex = f"{limite_tex(expressao, ponto)} \\quad \\text{{forma}} \\quad {forma_tex}"
+    if forma in _FORMAS_COM_REGRA_EXP:
+        latex += r" \qquad f^{g} = e^{g \ln f}"
+    return Passo(titulo=titulo, explicacao=explicacao, latex=latex)
+
+
 def passo_substituicao_sem_resultado(
     expressao: sp.Expr, ponto: sp.Expr, motivo: str
 ) -> Passo:

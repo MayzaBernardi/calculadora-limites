@@ -5,6 +5,7 @@ import sympy as sp
 
 from app.motor import passos
 from app.motor.entrada import x
+from app.motor.formas import identificar_forma
 from app.motor.passos import Passo
 
 # Funções descontínuas: a substituição direta não vale para elas.
@@ -54,6 +55,10 @@ def resolver(expressao: sp.Expr, ponto: sp.Expr) -> Resultado:
             lista.append(passos.passo_substituicao_direta(expressao, ponto, valor))
             return Resultado(resolvido=True, existe=True, valor=valor, passos=lista)
         lista.append(passos.passo_substituicao_sem_resultado(expressao, ponto, motivo))
+
+    forma = identificar_forma(expressao, ponto)
+    if forma is not None:
+        lista.append(passos.passo_forma_indeterminada(expressao, ponto, forma))
 
     # As próximas etapas (0/0, laterais, infinito...) entram aqui.
     return Resultado(resolvido=False, passos=lista)
