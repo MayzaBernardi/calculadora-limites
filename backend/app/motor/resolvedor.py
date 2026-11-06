@@ -7,6 +7,9 @@ from app.motor import passos
 from app.motor.entrada import x
 from app.motor.formas import identificar_forma
 from app.motor.passos import Passo
+from app.motor.tecnicas import fatorar_e_cancelar
+
+PROFUNDIDADE_MAXIMA = 5
 
 # Funções descontínuas: a substituição direta não vale para elas.
 FUNCOES_DESCONTINUAS = (sp.floor, sp.ceiling, sp.sign)
@@ -18,6 +21,7 @@ class Resultado:
     existe: bool | None = None
     valor: sp.Expr | None = None
     passos: list[Passo] = field(default_factory=list)
+    validado: bool | None = None  # conferido com sp.limit (None: não conferido)
 
 
 def _tem_zero_elevado_a_zero(expressao: sp.Expr, ponto: sp.Expr) -> bool:
@@ -46,7 +50,31 @@ def substituir(expressao: sp.Expr, ponto: sp.Expr) -> tuple[sp.Expr | None, str]
     return valor, ""
 
 
-def resolver(expressao: sp.Expr, ponto: sp.Expr) -> Resultado:
+TAMANHO_MAXIMO_CONFERENCIA = 300  # acima disso (sp.count_ops) não conferimos
+
+
+def conferir_com_sympy(
+    expressao: sp.Expr, ponto: sp.Expr, valor: sp.Expr, lado: str = "+-"
+) -> bool | None:
+    """Compara o valor com sp.limit. `lado` é "+", "-" ou "+-" (os dois lados,
+    padrão); use "+" ou "-" para limites de um lado só. Devolve None se a
+    expressão for grande demais ou se o SymPy não conseguir calcular."""
+    if sp.count_ops(expressao) > TAMANHO_MAXIMO_CONFERENCIA:
+        return None
+    try:
+        esperado = sp.limit(expressao, x, ponto, lado)
+    except Exception:
+        return None
+    if esperado.has(sp.nan, sp.zoo, sp.AccumBounds):
+        return None
+    if esperado == valor:
+        return True
+    if esperado.is_infinite or valor.is_infinite:
+        return False
+    return bool(sp.simplify(esperado - valor) == 0)
+
+
+def resolver(expressao: sp.Expr, ponto: sp.Expr, profundidade: int = 0) -> Resultado:
     lista = [passos.passo_funcao_dada(expressao, ponto)]
 
     if ponto.is_finite:
@@ -60,5 +88,24 @@ def resolver(expressao: sp.Expr, ponto: sp.Expr) -> Resultado:
     if forma is not None:
         lista.append(passos.passo_forma_indeterminada(expressao, ponto, forma))
 
-    # As próximas etapas (0/0, laterais, infinito...) entram aqui.
+    if forma == "0/0" and profundidade < PROFUNDIDADE_MAXIMA:
+        fatoracao = fatorar_e_cancelar(expressao, ponto)
+        if fatoracao is not None:
+            lista.append(passos.passo_fatoracao(
+                expressao, ponto, fatoracao.numerador, fatoracao.denominador,
+                fatoracao.fator_comum))
+            lista.append(passos.passo_cancelamento(
+                fatoracao.fator_comum, fatoracao.simplificada,
+                fatoracao.numerador, fatoracao.denominador, ponto))
+            sub = resolver(fatoracao.simplificada, ponto, profundidade + 1)
+            lista.extend(sub.passos[1:])  # o primeiro repete o limite já mostrado
+            if sub.resolvido and sub.existe:
+                lista.append(passos.passo_resultado(expressao, ponto, sub.valor))
+                return Resultado(
+                    resolvido=True, existe=True, valor=sub.valor, passos=lista,
+                    validado=conferir_com_sympy(expressao, ponto, sub.valor),
+                )
+            return Resultado(resolvido=False, passos=lista)
+
+    # As próximas etapas (laterais, infinito, L'Hôpital...) entram aqui.
     return Resultado(resolvido=False, passos=lista)

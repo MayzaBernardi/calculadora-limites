@@ -26,7 +26,10 @@ def texto_ponto(ponto: sp.Expr) -> str:
 
 
 def limite_tex(expressao: sp.Expr, ponto: sp.Expr) -> str:
-    return rf"\lim_{{x \to {tex(ponto)}}} {tex(expressao)}"
+    corpo = tex(expressao)
+    if expressao.is_Add:
+        corpo = rf"\left({corpo}\right)"
+    return rf"\lim_{{x \to {tex(ponto)}}} {corpo}"
 
 
 def substituicao_tex(expressao: sp.Expr, ponto: sp.Expr) -> str:
@@ -147,4 +150,54 @@ def passo_substituicao_sem_resultado(
         titulo="Tentativa de substituição direta",
         explicacao=f"Ao substituir x = {texto_ponto(ponto)}, {motivo}",
         latex=f"{limite_tex(expressao, ponto)} \\to {substituicao_tex(expressao, ponto)}",
+    )
+
+
+def _texto_expr(expr: sp.Expr) -> str:
+    return sp.sstr(expr).replace("**", "^").replace("*", " · ")
+
+
+def passo_fatoracao(
+    expressao: sp.Expr, ponto: sp.Expr, num_fat: sp.Expr, den_fat: sp.Expr,
+    fator: sp.Expr,
+) -> Passo:
+    return Passo(
+        titulo="Fatoração",
+        explicacao=(
+            "A substituição deu 0/0, então numerador e denominador se anulam no "
+            "ponto e devem ter um fator em comum. Fatorando numerador e "
+            f"denominador, aparece o fator {_texto_expr(fator)} nos dois."
+        ),
+        latex=(
+            f"{limite_tex(expressao, ponto)} = \\lim_{{x \\to {tex(ponto)}}} "
+            rf"\frac{{{tex(num_fat)}}}{{{tex(den_fat)}}}"
+        ),
+    )
+
+
+def passo_cancelamento(
+    fator: sp.Expr, simplificada: sp.Expr, num_fat: sp.Expr, den_fat: sp.Expr,
+    ponto: sp.Expr,
+) -> Passo:
+    return Passo(
+        titulo="Cancelamento do fator comum",
+        explicacao=(
+            f"Cancelamos o fator {_texto_expr(fator)} do numerador com o do "
+            "denominador. Isso é permitido porque x tende ao ponto, mas nunca é "
+            "igual a ele; logo esse fator é diferente de zero e o limite não muda."
+        ),
+        latex=(
+            rf"\lim_{{x \to {tex(ponto)}}} \frac{{{tex(num_fat)}}}{{{tex(den_fat)}}}"
+            f" = {limite_tex(simplificada, ponto)}"
+        ),
+    )
+
+
+def passo_resultado(expressao: sp.Expr, ponto: sp.Expr, valor: sp.Expr) -> Passo:
+    return Passo(
+        titulo="Resultado",
+        explicacao=(
+            f"O limite quando x tende a {texto_ponto(ponto)} vale {texto_ponto(valor)}."
+        ),
+        latex=f"{limite_tex(expressao, ponto)} = {tex(valor)}",
     )
