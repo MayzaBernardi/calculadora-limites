@@ -2,17 +2,9 @@
 import sympy as sp
 
 from app.motor.entrada import x
+from app.motor.seguro import limite_seguro
 
 INFINITOS = (sp.oo, -sp.oo)
-
-
-def _reescrever_exponenciais(parte: sp.Expr) -> sp.Expr:
-    """Contorna bug do SymPy: limite de 2**x em -oo sai errado. Usa e^(x ln b)."""
-    def trocar(p):
-        if p.base.is_number and p.base.is_positive and p.base != sp.E and p.exp.has(x):
-            return sp.exp(p.exp * sp.log(p.base))
-        return p
-    return parte.replace(lambda e: e.is_Pow, trocar)
 
 
 def limite_da_parte(
@@ -23,13 +15,8 @@ def limite_da_parte(
     parte = sp.sympify(parte)
     if parte.is_number and not parte.has(x):
         return parte
-    parte = _reescrever_exponenciais(parte)
-    try:
-        if ponto.is_finite and lado:
-            valor = sp.limit(parte, x, ponto, lado)
-        else:
-            valor = sp.limit(parte, x, ponto)
-    except Exception:
+    valor = limite_seguro(parte, ponto, lado if ponto.is_finite else None)
+    if valor is None:
         return None
     if valor.has(sp.nan, sp.zoo, sp.AccumBounds) or valor.has(sp.I):
         return None
@@ -38,7 +25,7 @@ def limite_da_parte(
     return None
 
 
-def _definida_no_lado(expressao: sp.Expr, ponto: sp.Expr, lado: str) -> bool:
+def definida_no_lado(expressao: sp.Expr, ponto: sp.Expr, lado: str) -> bool:
     """A expressão assume valores reais logo ao lado do ponto?"""
     try:
         deslocamento = 1e-6 if lado == "+" else -1e-6
@@ -124,7 +111,7 @@ def identificar_forma(expressao: sp.Expr, ponto: sp.Expr) -> str | None:
     formas = {
         _forma_no_lado(expressao, ponto, lado)
         for lado in ("+", "-")
-        if _definida_no_lado(expressao, ponto, lado)
+        if definida_no_lado(expressao, ponto, lado)
     }
     if len(formas) == 1:
         return formas.pop()

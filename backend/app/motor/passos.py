@@ -20,9 +20,22 @@ def tex(valor) -> str:
     return sp.latex(valor, ln_notation=True)
 
 
+def tex_ordenado(valor) -> str:
+    """Como tex(), mas uma soma sai com os termos na ordem de `valor.args`."""
+    if not valor.is_Add:
+        return tex(valor)
+    texto = tex(valor.args[0])
+    for termo in valor.args[1:]:
+        if termo.could_extract_minus_sign():
+            texto += f" - {tex(-termo)}"
+        else:
+            texto += f" + {tex(termo)}"
+    return texto
+
+
 def texto_ponto(ponto: sp.Expr) -> str:
     """Ponto em texto simples para as explicações."""
-    return sp.sstr(ponto).replace("pi", "π").replace("oo", "∞")
+    return sp.sstr(ponto).replace("pi", "π").replace("oo", "∞").replace("sqrt(", "√(")
 
 
 def limite_tex(expressao: sp.Expr, ponto: sp.Expr) -> str:
@@ -154,7 +167,7 @@ def passo_substituicao_sem_resultado(
 
 
 def _texto_expr(expr: sp.Expr) -> str:
-    return sp.sstr(expr).replace("**", "^").replace("*", " · ")
+    return texto_ponto(expr).replace("**", "^").replace("*", " · ")
 
 
 def passo_fatoracao(
@@ -200,4 +213,104 @@ def passo_resultado(expressao: sp.Expr, ponto: sp.Expr, valor: sp.Expr) -> Passo
             f"O limite quando x tende a {texto_ponto(ponto)} vale {texto_ponto(valor)}."
         ),
         latex=f"{limite_tex(expressao, ponto)} = {tex(valor)}",
+    )
+
+
+def _com_parenteses(expr: sp.Expr) -> str:
+    return tex(expr) if expr.is_Atom else rf"\left({tex(expr)}\right)"
+
+
+def passo_conjugado(r) -> Passo:
+    explicacao = (
+        f"Há uma raiz no {r.alvo}, e a substituição deu 0/0. Para eliminar a "
+        f"raiz, usamos o conjugado de {_texto_expr(r.com_raiz_exib)}: a mesma "
+        f"expressão com o sinal entre os dois termos trocado, "
+        f"{_texto_expr(r.conjugado_exib)}. Vamos multiplicar o numerador e o "
+        "denominador por ele; isso não muda o valor, pois estamos "
+        "multiplicando a fração por 1."
+    )
+    if r.raiz_nos_dois_lados:
+        explicacao += (
+            " Como a outra parte da fração também tem raiz, depois de simplificar "
+            "repetimos o processo com ela."
+        )
+    return Passo(
+        titulo="Conjugado",
+        explicacao=explicacao,
+        latex=(
+            rf"{tex_ordenado(r.com_raiz_exib)} \;\longrightarrow\; "
+            rf"{tex_ordenado(r.conjugado_exib)}"
+        ),
+    )
+
+
+def passo_multiplicacao_conjugado(expressao: sp.Expr, ponto: sp.Expr, r) -> Passo:
+    n, d = sp.fraction(expressao)
+    c = tex_ordenado(r.conjugado_exib)
+    quadrado_p, quadrado_q = r.primeiro**2, r.segundo**2
+    identidade = (
+        rf"\left({tex_ordenado(r.com_raiz_exib)}\right)\left({c}\right) = "
+        rf"{_com_parenteses(r.primeiro)}^{{2}} - {_com_parenteses(r.segundo)}^{{2}}"
+        rf" = {_com_parenteses(quadrado_p)} - {_com_parenteses(quadrado_q)}"
+        rf" = {tex(r.produto)}"
+    )
+    multiplicacao = (
+        f"{limite_tex(expressao, ponto)} = "
+        rf"\lim_{{x \to {tex(ponto)}}} \frac{{{tex(n)}}}{{{tex(d)}}}"
+        rf" \cdot \frac{{{c}}}{{{c}}}"
+    )
+    return Passo(
+        titulo="Multiplicação pelo conjugado",
+        explicacao=(
+            "Usamos o produto notável (a − b)(a + b) = a² − b². Assim o "
+            f"{r.alvo} multiplicado pelo conjugado vira {_texto_expr(r.produto)}, "
+            "sem raiz, porque o quadrado de uma raiz quadrada é o que está dentro dela."
+        ),
+        latex=rf"\begin{{gathered}}{multiplicacao} \\ {identidade}\end{{gathered}}",
+    )
+
+
+def passo_simplificacao_racionalizacao(
+    expressao: sp.Expr, ponto: sp.Expr, r
+) -> Passo:
+    if r.fator_cancelado is not None:
+        explicacao = (
+            f"O fator {_texto_expr(r.fator_cancelado)} aparece no numerador e no "
+            "denominador e se anula no ponto. Como x se aproxima do ponto sem "
+            "nunca ser igual a ele, esse fator é diferente de zero e podemos "
+            "cancelá-lo sem mudar o limite."
+        )
+    else:
+        explicacao = (
+            "Reorganizamos o produto sem cancelar nada ainda: a raiz que "
+            "atrapalhava saiu desta parte da fração."
+        )
+    return Passo(
+        titulo="Simplificação",
+        explicacao=explicacao,
+        latex=(
+            rf"\lim_{{x \to {tex(ponto)}}} \frac{{{tex(r.numerador)}}}{{{tex(r.denominador)}}}"
+            f" = {limite_tex(r.simplificada, ponto)}"
+        ),
+    )
+
+
+def passo_tecnica_sem_conclusao(conferencia_falhou: bool) -> Passo:
+    if conferencia_falhou:
+        return Passo(
+            titulo="Conferência não coincidiu",
+            explicacao=(
+                "Ao conferir o resultado com um cálculo independente, os valores "
+                "não coincidiram. Por isso não afirmamos esse resultado: não "
+                "conseguimos concluir o limite por esta técnica."
+            ),
+            latex=r"\text{resultado não confirmado}",
+        )
+    return Passo(
+        titulo="Não conseguimos concluir",
+        explicacao=(
+            "A técnica aplicada não levou a um valor para o limite, então não "
+            "conseguimos concluir por este caminho."
+        ),
+        latex=r"\text{sem conclusão}",
     )

@@ -5,9 +5,10 @@ import sympy as sp
 
 from app.motor import passos
 from app.motor.entrada import x
-from app.motor.formas import identificar_forma
+from app.motor.formas import definida_no_lado, identificar_forma
 from app.motor.passos import Passo
-from app.motor.tecnicas import fatorar_e_cancelar
+from app.motor.seguro import limite_seguro
+from app.motor.tecnicas import fatorar_e_cancelar, racionalizar
 
 PROFUNDIDADE_MAXIMA = 5
 
@@ -61,11 +62,13 @@ def conferir_com_sympy(
     expressão for grande demais ou se o SymPy não conseguir calcular."""
     if sp.count_ops(expressao) > TAMANHO_MAXIMO_CONFERENCIA:
         return None
-    try:
-        esperado = sp.limit(expressao, x, ponto, lado)
-    except Exception:
-        return None
-    if esperado.has(sp.nan, sp.zoo, sp.AccumBounds):
+    if lado == "+-" and ponto.is_finite:
+        # função definida só de um lado: compara com o limite desse lado
+        lados = [l for l in ("+", "-") if definida_no_lado(expressao, ponto, l)]
+        if len(lados) == 1:
+            lado = lados[0]
+    esperado = limite_seguro(expressao, ponto, lado if ponto.is_finite else None)
+    if esperado is None or esperado.has(sp.nan, sp.zoo, sp.AccumBounds):
         return None
     if esperado == valor:
         return True
@@ -74,7 +77,40 @@ def conferir_com_sympy(
     return bool(sp.simplify(esperado - valor) == 0)
 
 
+def _continuar(
+    original: sp.Expr, ponto: sp.Expr, nova: sp.Expr, base: list[Passo],
+    passos_tecnica: list[Passo], profundidade: int,
+) -> Resultado:
+    """Resolve a expressão transformada por uma técnica e confere com o SymPy.
+    Se a técnica não conclui, ou o valor diverge do sp.limit, descarta os
+    passos da técnica e acrescenta um passo honesto no lugar."""
+    sub = resolver(nova, ponto, profundidade + 1)
+    if not (sub.resolvido and sub.existe):
+        return Resultado(
+            resolvido=False, passos=base + [passos.passo_tecnica_sem_conclusao(False)]
+        )
+    validado = conferir_com_sympy(original, ponto, sub.valor)
+    if validado is False:
+        return Resultado(
+            resolvido=False, validado=False,
+            passos=base + [passos.passo_tecnica_sem_conclusao(True)],
+        )
+    lista = base + passos_tecnica + sub.passos[1:]  # o 1º repete o limite já mostrado
+    lista.append(passos.passo_resultado(original, ponto, sub.valor))
+    return Resultado(
+        resolvido=True, existe=True, valor=sub.valor, passos=lista, validado=validado
+    )
+
+
+def _decimais_para_racionais(expr: sp.Expr) -> sp.Expr:
+    """0.5 vira 1/2: a entrada decimal é exata para o aluno."""
+    return expr.xreplace({f: sp.Rational(str(f)) for f in expr.atoms(sp.Float)})
+
+
 def resolver(expressao: sp.Expr, ponto: sp.Expr, profundidade: int = 0) -> Resultado:
+    if profundidade == 0:
+        expressao = _decimais_para_racionais(expressao)
+        ponto = _decimais_para_racionais(ponto)
     lista = [passos.passo_funcao_dada(expressao, ponto)]
 
     if ponto.is_finite:
@@ -91,21 +127,28 @@ def resolver(expressao: sp.Expr, ponto: sp.Expr, profundidade: int = 0) -> Resul
     if forma == "0/0" and profundidade < PROFUNDIDADE_MAXIMA:
         fatoracao = fatorar_e_cancelar(expressao, ponto)
         if fatoracao is not None:
-            lista.append(passos.passo_fatoracao(
-                expressao, ponto, fatoracao.numerador, fatoracao.denominador,
-                fatoracao.fator_comum))
-            lista.append(passos.passo_cancelamento(
-                fatoracao.fator_comum, fatoracao.simplificada,
-                fatoracao.numerador, fatoracao.denominador, ponto))
-            sub = resolver(fatoracao.simplificada, ponto, profundidade + 1)
-            lista.extend(sub.passos[1:])  # o primeiro repete o limite já mostrado
-            if sub.resolvido and sub.existe:
-                lista.append(passos.passo_resultado(expressao, ponto, sub.valor))
-                return Resultado(
-                    resolvido=True, existe=True, valor=sub.valor, passos=lista,
-                    validado=conferir_com_sympy(expressao, ponto, sub.valor),
-                )
-            return Resultado(resolvido=False, passos=lista)
+            tecnica = [
+                passos.passo_fatoracao(
+                    expressao, ponto, fatoracao.numerador, fatoracao.denominador,
+                    fatoracao.fator_comum),
+                passos.passo_cancelamento(
+                    fatoracao.fator_comum, fatoracao.simplificada,
+                    fatoracao.numerador, fatoracao.denominador, ponto),
+            ]
+            return _continuar(
+                expressao, ponto, fatoracao.simplificada, lista, tecnica, profundidade)
+
+        racionalizacao = racionalizar(expressao, ponto)
+        if racionalizacao is not None:
+            tecnica = [
+                passos.passo_conjugado(racionalizacao),
+                passos.passo_multiplicacao_conjugado(expressao, ponto, racionalizacao),
+                passos.passo_simplificacao_racionalizacao(
+                    expressao, ponto, racionalizacao),
+            ]
+            return _continuar(
+                expressao, ponto, racionalizacao.simplificada, lista, tecnica,
+                profundidade)
 
     # As próximas etapas (laterais, infinito, L'Hôpital...) entram aqui.
     return Resultado(resolvido=False, passos=lista)
