@@ -5,6 +5,7 @@ import sympy as sp
 
 from app.motor.entrada import ErroEntrada, ler_funcao, ler_ponto, x
 from app.motor.formas import identificar_forma, limite_da_parte
+from app.motor.seguro import limite_seguro
 from app.motor.passos import passo_forma_indeterminada
 from app.motor.resolvedor import resolver
 
@@ -97,7 +98,7 @@ def test_substituicao_direta(funcao, ponto, esperado):
     "funcao, ponto",
     [
         ("(x^2-4)/(x-2)", "infinito"),  # ainda não tratado (etapa 4)
-        ("sen(x)/x", "0"),        # 0/0
+        ("sen(x)/x^2", "0"),      # 0/0 sem técnica que conclua
         ("1/x", "0"),             # k/0
         ("x^x", "0"),             # 0^0 não vale 1 em limites
         ("sqrt(x)", "-1"),        # fora do domínio
@@ -166,11 +167,10 @@ def test_identificar_forma(funcao, ponto, esperada):
 
 
 def test_zero_sobre_zero_registra_passo_sem_resolver():
-    r = _resolver("sen(x)/x", "0")  # ainda sem técnica (limites fundamentais)
+    r = _resolver("sen(x)/x^2", "0")  # nenhuma técnica conclui
     assert not r.resolvido
-    assert [p.titulo for p in r.passos][-1] == "Indeterminação 0/0"
-    assert "simplificar" in r.passos[-1].explicacao
-    assert r.passos[-1].latex
+    passo = next(p for p in r.passos if p.titulo == "Indeterminação 0/0")
+    assert "simplificar" in passo.explicacao and passo.latex
 
 
 def test_substituicao_direta_nao_registra_forma():
@@ -274,7 +274,7 @@ def test_fatoracao(funcao, ponto, esperado):
     [
         ("x/x^2", "0"),                 # vira 1/x: k/0, sem limite
         ("(x-1)^2/(x-1)^3", "1"),       # vira 1/(x-1)
-        ("sen(x)/x", "0"),              # não é racional
+        ("sen(x)/x^2", "0"),            # não é racional
         ("(x^2-4)/(x-2)", "infinito"),  # ponto infinito
         ("(x+1)/(x-2)", "2"),           # k/0
     ],
@@ -353,7 +353,7 @@ def test_texto_e_latex_dos_passos_de_fatoracao():
 
 def test_validado_none_fora_da_fatoracao():
     assert _resolver("x+1", "2").validado is None
-    assert _resolver("sen(x)/x", "0").validado is None
+    assert _resolver("sen(x)/x^2", "0").validado is None
 
 
 def test_conferir_com_sympy_aceita_lado_e_ignora_expressao_grande():
@@ -430,7 +430,7 @@ def test_racionalizacao_denominador_diz_denominador():
     [
         ("sqrt(x^2)/x", "0"),                    # laterais divergentes
         ("|x|/x", "0"),
-        ("sen(x)/x", "0"),                       # sem raiz
+        ("sen(x)/x^2", "0"),                     # sem raiz
         ("(sqrt(x+1)-1)/x", "infinito"),         # ponto infinito
         ("(sqrt(x+1)+1)/x", "0"),                # k/0, não 0/0
         ("(x^(1/3)-1)/(x-1)", "1"),              # raiz cúbica
@@ -551,3 +551,183 @@ def test_simplificacao_diz_qual_fator_cancela():
 def test_texto_do_resultado_usa_unicode():
     r = _resolver("(sqrt(x+3)-sqrt(3))/x", "0")
     assert "√" in r.passos[-1].explicacao and "sqrt" not in r.passos[-1].explicacao
+
+
+# ---------- técnica: limites fundamentais em 0/0 ----------
+
+@pytest.mark.parametrize(
+    "funcao, ponto, esperado",
+    [
+        ("sen(x)/x", "0", 1),
+        ("sen(3x)/x", "0", 3),
+        ("sen(3x)/sen(5x)", "0", sp.Rational(3, 5)),
+        ("tg(x)/x", "0", 1),
+        ("tg(2x)/x", "0", 2),
+        ("(1-cos(x))/x^2", "0", sp.Rational(1, 2)),
+        ("(1-cos(2x))/x^2", "0", 2),
+        ("(1-cos(x))/x", "0", 0),
+        ("(e^x-1)/x", "0", 1),
+        ("(e^(2x)-1)/x", "0", 2),
+        ("ln(1+x)/x", "0", 1),
+        ("ln(1+3x)/x", "0", 3),
+        ("sen(x^2)/x^2", "0", 1),
+        ("sen(x)/(2x)", "0", sp.Rational(1, 2)),
+        ("x/sen(x)", "0", 1),
+        ("sen(x)^2/x^2", "0", 1),
+        ("(2^x-1)/x", "0", sp.log(2)),
+        ("sen(x-1)/(x-1)", "1", 1),          # u = x - 1
+        ("sen(2x-6)/(x-3)", "3", 2),
+        ("x*sen(x)/x^2", "0", 1),
+        ("sen(x)/(x^2+x)", "0", 1),          # o resto cai na fatoração
+        ("(cos(x)-1)/x^2", "0", -sp.Rational(1, 2)),
+        ("(2^(3x)-1)/x", "0", 3 * sp.log(2)),
+        ("(e^(sen(x))-1)*(1+x)/(5x)", "0", sp.Rational(1, 5)),    # u = sen x
+        ("(1-cos(sen(x)))*(x+2)/sen(x)", "0", 0),
+    ],
+)
+def test_limites_fundamentais(funcao, ponto, esperado):
+    expr, p = ler_funcao(funcao), ler_ponto(ponto)
+    r = resolver(expr, p)
+    assert r.resolvido and r.existe
+    assert sp.simplify(r.valor - esperado) == 0
+    assert r.validado is True
+    assert sp.simplify(limite_seguro(expr, p) - esperado) == 0
+    titulos = [t.titulo for t in r.passos]
+    for titulo in ("Limite fundamental", "Ajuste algébrico"):
+        assert titulo in titulos
+    assert any(t.startswith("Limite do produto") for t in titulos)
+    assert titulos[-1] == "Resultado"
+    assert all(t.titulo and t.explicacao and t.latex for t in r.passos)
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto",
+    [
+        ("sen(x)/x", "infinito"),       # u = x não tende a 0
+        ("sen(x)/x^2", "0"),            # o resto 1/x diverge
+        ("sen(1/x)/(1/x)", "0"),        # u = 1/x não tende a 0
+        ("(x^2-4)/(x-2)", "2"),         # é fatoração, não fundamental
+    ],
+)
+def test_limites_fundamentais_nao_se_aplicam(funcao, ponto):
+    r = _resolver(funcao, ponto)
+    titulos = [p.titulo for p in r.passos]
+    assert "Limite fundamental" not in titulos
+    if funcao != "(x^2-4)/(x-2)":
+        assert not r.resolvido and r.valor is None
+
+
+def test_fundamental_nao_e_usado_quando_fatoracao_resolve():
+    r = _resolver("(x^2-1)/(x-1)", "1")
+    assert r.valor == 2 and "Fatoração" in [p.titulo for p in r.passos]
+
+
+def test_fundamental_texto_e_latex():
+    r = _resolver("sen(3x)/x", "0")
+    por_titulo = {p.titulo: p for p in r.passos}
+    lf = por_titulo["Limite fundamental"]
+    assert lf.latex == (
+        r"\lim_{u \to 0} \frac{\sin u}{u} = 1, \quad u = 3 x, \quad "
+        r"\lim_{x \to 0} \left(3 x\right) = 0"
+    )
+    assert "u = 3 · x" in lf.explicacao and "tende a 0" in lf.explicacao
+    assert "sen(3 · x)" in lf.explicacao
+    aj = por_titulo["Ajuste algébrico"]
+    assert aj.latex.endswith(r"\lim_{x \to 0} \frac{\sin{\left(3 x \right)}}{3 x} \cdot 3")
+    prod = por_titulo["Limite do produto"]
+    assert "produto dos limites" in prod.explicacao
+    assert prod.latex.endswith(r"= 1 \cdot \lim_{x \to 0} 3")
+    assert r.passos[-1].latex.endswith("= 3")
+
+
+def test_fundamental_no_denominador_mostra_inverso():
+    r = _resolver("x/sen(x)", "0")
+    aj = next(p for p in r.passos if p.titulo == "Ajuste algébrico")
+    assert r"\frac{1}{\frac{\sin{\left(x \right)}}{x}}" in aj.latex
+
+
+def test_fundamental_divergencia_descarta_passos(monkeypatch):
+    from app.motor import resolvedor
+    monkeypatch.setattr(resolvedor, "conferir_com_sympy", lambda *a, **k: False)
+    r = _resolver("sen(3x)/x", "0")
+    titulos = [p.titulo for p in r.passos]
+    assert not r.resolvido and r.validado is False
+    assert titulos[-1] == "Conferência não coincidiu"
+    assert "Limite fundamental" not in titulos
+
+
+# ---------- robustez: lados, timeout e conferência obrigatória ----------
+
+@pytest.mark.parametrize(
+    "funcao",
+    [
+        "sen(x*e^(-1/x))/(x*e^(-1/x))",   # u -> 0 só pela direita
+        "sen(e^(-1/x))/e^(-1/x)",
+        "sen(x)/|x|",                      # laterais diferentes
+        "sen(pi*x)/(x-1)",                 # não é 0/0 em 0; testado em 1 abaixo
+    ],
+)
+def test_fundamentais_nao_afirmam_valor_com_lados_diferentes(funcao):
+    inicio = time.perf_counter()
+    r = _resolver(funcao, "0" if "pi" not in funcao else "1")
+    assert time.perf_counter() - inicio < 10
+    if "pi" in funcao:
+        # sen(pi x)/(x-1) em 1 tem limite -pi; só aceitamos o valor se confirmado
+        assert (not r.resolvido) or (r.validado is True and r.valor == -sp.pi)
+    else:
+        assert not r.resolvido and r.valor is None
+
+
+def test_definida_no_lado_tem_timeout(monkeypatch):
+    from app.motor import formas
+
+    def lenta(*args, **kwargs):
+        time.sleep(30)
+
+    monkeypatch.setattr(formas, "_amostra_real", lenta)
+    monkeypatch.setattr(formas, "executar_com_timeout",
+                        lambda f, *a, **k: formas_original(f, *a, tempo=0.3))
+    inicio = time.perf_counter()
+    assert formas.definida_no_lado(x, sp.Integer(0), "+") is None
+    assert time.perf_counter() - inicio < 5
+
+
+def formas_original(f, *a, tempo):
+    from app.motor.seguro import executar_com_timeout
+    return executar_com_timeout(f, *a, tempo=tempo)
+
+
+def test_forma_none_quando_lado_nao_confiavel(monkeypatch):
+    from app.motor import formas
+    monkeypatch.setattr(formas, "definida_no_lado", lambda *a, **k: None)
+    assert identificar_forma(ler_funcao("sen(x)/x"), sp.Integer(0)) is None
+
+
+def test_sem_conferencia_nao_afirma_valor(monkeypatch):
+    from app.motor import resolvedor
+    monkeypatch.setattr(resolvedor, "conferir_com_sympy", lambda *a, **k: None)
+    r = _resolver("(x^2-4)/(x-2)", "2")
+    assert not r.resolvido and r.valor is None
+    assert r.passos[-1].titulo == "Não conseguimos concluir"
+    assert "confirmar" in r.passos[-1].explicacao
+    # substituição direta pura continua resolvendo sem conferência
+    assert _resolver("x+1", "2").resolvido
+
+
+def test_substituicao_direta_constante_sem_igualdade_repetida():
+    r = _resolver("sen(3x)/sen(5x)", "0")
+    ultimo_sub = [p for p in r.passos if p.titulo == "Substituição direta"][-1]
+    assert ultimo_sub.latex == r"\lim_{x \to 0} \frac{3}{5} = \frac{3}{5}"
+
+
+def test_texto_quociente_e_ln():
+    r = _resolver("sen(3x)/sen(5x)", "0")
+    prod = next(p for p in r.passos if p.titulo.startswith("Limite do produto"))
+    assert prod.titulo == "Limite do produto e do quociente"
+    assert "quociente" in prod.explicacao and "diferente de 0" in prod.explicacao
+    r2 = _resolver("(2^x-1)/x", "0")
+    assert "ln(2)" in r2.passos[-1].explicacao and "log" not in r2.passos[-1].explicacao
+    r3 = _resolver("sen(x)^2/x^2", "0")
+    assert "sen²(x)" in next(p for p in r3.passos if p.titulo == "Limite fundamental").explicacao
+    lf = next(p for p in r3.passos if p.titulo == "Limite fundamental")
+    assert r"\left(x\right)" not in lf.latex

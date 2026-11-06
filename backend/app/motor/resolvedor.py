@@ -5,10 +5,12 @@ import sympy as sp
 
 from app.motor import passos
 from app.motor.entrada import x
-from app.motor.formas import definida_no_lado, identificar_forma
+from app.motor.formas import identificar_forma, lados_definidos
 from app.motor.passos import Passo
 from app.motor.seguro import limite_seguro
-from app.motor.tecnicas import fatorar_e_cancelar, racionalizar
+from app.motor.tecnicas import (
+    aplicar_limites_fundamentais, fatorar_e_cancelar, racionalizar,
+)
 
 PROFUNDIDADE_MAXIMA = 5
 
@@ -64,7 +66,9 @@ def conferir_com_sympy(
         return None
     if lado == "+-" and ponto.is_finite:
         # função definida só de um lado: compara com o limite desse lado
-        lados = [l for l in ("+", "-") if definida_no_lado(expressao, ponto, l)]
+        lados = lados_definidos(expressao, ponto)
+        if lados is None:
+            return None
         if len(lados) == 1:
             lado = lados[0]
     esperado = limite_seguro(expressao, ponto, lado if ponto.is_finite else None)
@@ -80,6 +84,7 @@ def conferir_com_sympy(
 def _continuar(
     original: sp.Expr, ponto: sp.Expr, nova: sp.Expr, base: list[Passo],
     passos_tecnica: list[Passo], profundidade: int,
+    multiplicador: sp.Expr = sp.Integer(1),
 ) -> Resultado:
     """Resolve a expressão transformada por uma técnica e confere com o SymPy.
     Se a técnica não conclui, ou o valor diverge do sp.limit, descarta os
@@ -87,18 +92,25 @@ def _continuar(
     sub = resolver(nova, ponto, profundidade + 1)
     if not (sub.resolvido and sub.existe):
         return Resultado(
-            resolvido=False, passos=base + [passos.passo_tecnica_sem_conclusao(False)]
+            resolvido=False, passos=base + [passos.passo_tecnica_sem_conclusao("sem_conclusao")]
         )
-    validado = conferir_com_sympy(original, ponto, sub.valor)
+    valor = sp.simplify(multiplicador * sub.valor)
+    validado = conferir_com_sympy(original, ponto, valor)
     if validado is False:
         return Resultado(
             resolvido=False, validado=False,
-            passos=base + [passos.passo_tecnica_sem_conclusao(True)],
+            passos=base + [passos.passo_tecnica_sem_conclusao("divergiu")],
+        )
+    if validado is None and ponto.is_finite:
+        # sem confirmação independente não afirmamos o valor de uma técnica
+        return Resultado(
+            resolvido=False,
+            passos=base + [passos.passo_tecnica_sem_conclusao("nao_confirmado")],
         )
     lista = base + passos_tecnica + sub.passos[1:]  # o 1º repete o limite já mostrado
-    lista.append(passos.passo_resultado(original, ponto, sub.valor))
+    lista.append(passos.passo_resultado(original, ponto, valor))
     return Resultado(
-        resolvido=True, existe=True, valor=sub.valor, passos=lista, validado=validado
+        resolvido=True, existe=True, valor=valor, passos=lista, validado=validado
     )
 
 
@@ -149,6 +161,15 @@ def resolver(expressao: sp.Expr, ponto: sp.Expr, profundidade: int = 0) -> Resul
             return _continuar(
                 expressao, ponto, racionalizacao.simplificada, lista, tecnica,
                 profundidade)
+
+        fundamentais = aplicar_limites_fundamentais(expressao, ponto)
+        if fundamentais is not None:
+            tecnica = [passos.passo_limite_fundamental(b, ponto) for b in fundamentais.blocos]
+            tecnica.append(passos.passo_ajuste_fundamental(expressao, ponto, fundamentais))
+            tecnica.append(passos.passo_produto_de_limites(expressao, ponto, fundamentais))
+            return _continuar(
+                expressao, ponto, fundamentais.resto, lista, tecnica, profundidade,
+                multiplicador=fundamentais.fator)
 
     # As próximas etapas (laterais, infinito, L'Hôpital...) entram aqui.
     return Resultado(resolvido=False, passos=lista)

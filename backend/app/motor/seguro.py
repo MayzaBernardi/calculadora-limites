@@ -4,7 +4,8 @@ Mecanismo: o sp.limit roda em um processo filho criado com fork
 (multiprocessing, contexto "fork") e o resultado volta por um pipe. Se passar
 do tempo, o filho é morto. Escolhi processo e não thread porque uma thread não
 pode ser interrompida, e não escolhi SIGALRM porque ele só funciona na thread
-principal (o FastAPI executa rotas síncronas em threads). O fork existe só em
+principal (o FastAPI executa rotas síncronas em threads). Também serve para outras contas que podem travar (executar_com_timeout).
+O fork existe só em
 Linux/macOS; sem ele, o limite roda direto, sem proteção de tempo.
 A API da Etapa 6 deve usar esta mesma função.
 """
@@ -45,17 +46,48 @@ def preparar_para_limite(expr: sp.Expr) -> sp.Expr:
     return _reescrever_raizes_de_quadrados(_reescrever_exponenciais(expr))
 
 
-def _trabalhador(expr, ponto, direcao, conexao):
+def _trabalhador(funcao, args, conexao):
     try:
-        if direcao is None:
-            valor = sp.limit(expr, x, ponto)
-        else:
-            valor = sp.limit(expr, x, ponto, direcao)
-        conexao.send(("ok", valor))
+        conexao.send(("ok", funcao(*args)))
     except BaseException as erro:  # noqa: BLE001 - qualquer falha vira None
         conexao.send(("erro", repr(erro)))
     finally:
         conexao.close()
+
+
+def executar_com_timeout(funcao, *args, tempo: float = TEMPO_MAXIMO):
+    """Roda funcao(*args) em processo filho. Devolve (True, valor) ou
+    (False, None) se falhar ou passar do tempo. `funcao` e os argumentos
+    precisam ser picklable (função de módulo, expressões do SymPy...)."""
+    try:
+        contexto = multiprocessing.get_context("fork")
+    except ValueError:
+        try:
+            return True, funcao(*args)
+        except Exception:
+            return False, None
+    receptor, emissor = contexto.Pipe(duplex=False)
+    filho = contexto.Process(target=_trabalhador, args=(funcao, args, emissor), daemon=True)
+    filho.start()
+    emissor.close()
+    try:
+        if not receptor.poll(tempo):
+            return False, None
+        tipo, valor = receptor.recv()
+    except (EOFError, OSError):
+        return False, None
+    finally:
+        if filho.is_alive():
+            filho.kill()
+        filho.join()
+        receptor.close()
+    return (True, valor) if tipo == "ok" else (False, None)
+
+
+def _calcular_limite(expr, ponto, direcao):
+    if direcao is None:
+        return sp.limit(expr, x, ponto)
+    return sp.limit(expr, x, ponto, direcao)
 
 
 def limite_seguro(
@@ -64,28 +96,5 @@ def limite_seguro(
 ) -> sp.Expr | None:
     """sp.limit(expr, x, ponto, direcao) ou None se falhar ou passar do tempo."""
     expr = preparar_para_limite(sp.sympify(expr))
-    try:
-        contexto = multiprocessing.get_context("fork")
-    except ValueError:
-        try:
-            return sp.limit(expr, x, ponto, direcao) if direcao else sp.limit(expr, x, ponto)
-        except Exception:
-            return None
-    receptor, emissor = contexto.Pipe(duplex=False)
-    filho = contexto.Process(
-        target=_trabalhador, args=(expr, ponto, direcao, emissor), daemon=True
-    )
-    filho.start()
-    emissor.close()
-    try:
-        if not receptor.poll(tempo):
-            return None
-        tipo, valor = receptor.recv()
-    except (EOFError, OSError):
-        return None
-    finally:
-        if filho.is_alive():
-            filho.kill()
-        filho.join()
-        receptor.close()
-    return valor if tipo == "ok" else None
+    ok, valor = executar_com_timeout(_calcular_limite, expr, ponto, direcao, tempo=tempo)
+    return valor if ok else None

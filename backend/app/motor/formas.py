@@ -2,7 +2,7 @@
 import sympy as sp
 
 from app.motor.entrada import x
-from app.motor.seguro import limite_seguro
+from app.motor.seguro import executar_com_timeout, limite_seguro
 
 INFINITOS = (sp.oo, -sp.oo)
 
@@ -25,15 +25,19 @@ def limite_da_parte(
     return None
 
 
-def definida_no_lado(expressao: sp.Expr, ponto: sp.Expr, lado: str) -> bool:
-    """A expressão assume valores reais logo ao lado do ponto?"""
-    try:
-        deslocamento = 1e-6 if lado == "+" else -1e-6
-        amostra = sp.Float(float(sp.N(ponto)) + deslocamento, 17)
-        valor = complex(expressao.evalf(15, subs={x: amostra}))
-    except Exception:
-        return False
+def _amostra_real(expressao: sp.Expr, ponto: sp.Expr, lado: str) -> bool:
+    deslocamento = 1e-6 if lado == "+" else -1e-6
+    amostra = sp.Float(float(sp.N(ponto)) + deslocamento, 17)
+    valor = complex(expressao.evalf(15, subs={x: amostra}))
     return valor == valor and abs(valor.imag) < 1e-12 * max(1.0, abs(valor.real))
+
+
+def definida_no_lado(expressao: sp.Expr, ponto: sp.Expr, lado: str) -> bool | None:
+    """A expressão assume valores reais logo ao lado do ponto? Avalia em ponto
+    flutuante, em processo com timeout. None se não deu para avaliar a tempo
+    (o lado fica "não confiável")."""
+    ok, definida = executar_com_timeout(_amostra_real, expressao, ponto, lado)
+    return definida if ok else None
 
 
 def _infinito(valor) -> bool:
@@ -101,6 +105,19 @@ def _forma_no_lado(expressao: sp.Expr, ponto: sp.Expr, lado) -> str | None:
     return None
 
 
+def lados_definidos(expressao: sp.Expr, ponto: sp.Expr) -> list[str] | None:
+    """Lados ("+" e/ou "-") onde a função existe perto de um ponto finito, ou
+    None se algum lado não pôde ser avaliado de forma confiável."""
+    lados = []
+    for lado in ("+", "-"):
+        definida = definida_no_lado(expressao, ponto, lado)
+        if definida is None:
+            return None
+        if definida:
+            lados.append(lado)
+    return lados
+
+
 def identificar_forma(expressao: sp.Expr, ponto: sp.Expr) -> str | None:
     """Devolve "0/0", "oo/oo", "k/0", "oo/0", "0*oo", "oo-oo", "1^oo", "0^0",
     "oo^0" ou None. Em ponto finito a forma precisa ser a mesma pelos dois
@@ -108,11 +125,10 @@ def identificar_forma(expressao: sp.Expr, ponto: sp.Expr) -> str | None:
     diferem, devolve None e a análise lateral fica para a Etapa 3."""
     if not ponto.is_finite:
         return _forma_no_lado(expressao, ponto, None)
-    formas = {
-        _forma_no_lado(expressao, ponto, lado)
-        for lado in ("+", "-")
-        if definida_no_lado(expressao, ponto, lado)
-    }
+    lados = lados_definidos(expressao, ponto)
+    if lados is None:
+        return None
+    formas = {_forma_no_lado(expressao, ponto, lado) for lado in lados}
     if len(formas) == 1:
         return formas.pop()
     return None

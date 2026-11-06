@@ -1,4 +1,5 @@
 """Montagem de cada passo da resolução (título, explicação e LaTeX)."""
+import re
 from dataclasses import dataclass
 
 import sympy as sp
@@ -35,7 +36,7 @@ def tex_ordenado(valor) -> str:
 
 def texto_ponto(ponto: sp.Expr) -> str:
     """Ponto em texto simples para as explicações."""
-    return sp.sstr(ponto).replace("pi", "π").replace("oo", "∞").replace("sqrt(", "√(")
+    return sp.sstr(ponto).replace("pi", "π").replace("oo", "∞").replace("sqrt(", "√(").replace("log(", "ln(")
 
 
 def limite_tex(expressao: sp.Expr, ponto: sp.Expr) -> str:
@@ -64,16 +65,17 @@ def passo_funcao_dada(expressao: sp.Expr, ponto: sp.Expr) -> Passo:
 def passo_substituicao_direta(
     expressao: sp.Expr, ponto: sp.Expr, valor: sp.Expr
 ) -> Passo:
+    if expressao.has(x):
+        conta = f"{substituicao_tex(expressao, ponto)} = {tex(valor)}"
+    else:
+        conta = tex(valor)  # constante: não há o que substituir
     return Passo(
         titulo="Substituição direta",
         explicacao=(
             f"A função é contínua em x = {texto_ponto(ponto)}, então o limite é "
             "o valor da função nesse ponto: basta substituir x."
         ),
-        latex=(
-            f"{limite_tex(expressao, ponto)} = {substituicao_tex(expressao, ponto)}"
-            f" = {tex(valor)}"
-        ),
+        latex=f"{limite_tex(expressao, ponto)} = {conta}",
     )
 
 
@@ -167,7 +169,9 @@ def passo_substituicao_sem_resultado(
 
 
 def _texto_expr(expr: sp.Expr) -> str:
-    return texto_ponto(expr).replace("**", "^").replace("*", " · ")
+    texto = texto_ponto(expr).replace("**", "^").replace("*", " · ")
+    texto = texto.replace("sin(", "sen(").replace("tan(", "tg(")
+    return re.sub(r"(sen|tg)\(([^()]*)\)\^2", r"\1²(\2)", texto)
 
 
 def passo_fatoracao(
@@ -295,14 +299,100 @@ def passo_simplificacao_racionalizacao(
     )
 
 
-def passo_tecnica_sem_conclusao(conferencia_falhou: bool) -> Passo:
-    if conferencia_falhou:
+def passo_limite_fundamental(bloco, ponto: sp.Expr) -> Passo:
+    return Passo(
+        titulo="Limite fundamental",
+        explicacao=(
+            f"No {bloco.lado} aparece {_texto_expr(bloco.g)}, que lembra um limite "
+            f"fundamental com u = {_texto_expr(bloco.u)}. Isso só vale se u tender "
+            f"a 0: quando x tende a {texto_ponto(ponto)}, u = {_texto_expr(bloco.u)} "
+            "tende a 0, então podemos usar o limite fundamental abaixo."
+        ),
+        latex=(
+            rf"{bloco.formula}, \quad u = {tex(bloco.u)}, \quad "
+            rf"\lim_{{x \to {tex(ponto)}}} {_com_parenteses(bloco.u)} = 0"
+        ),
+    )
+
+
+def _fator_fundamental_tex(f) -> str:
+    n = next((b for b in f.blocos if b.lado == "numerador"), None)
+    d = next((b for b in f.blocos if b.lado == "denominador"), None)
+    frac_n = rf"\frac{{{tex(n.g)}}}{{{tex(n.h)}}}" if n else None
+    frac_d = rf"\frac{{{tex(d.g)}}}{{{tex(d.h)}}}" if d else None
+    if n and d:
+        return rf"\frac{{{frac_n}}}{{{frac_d}}}"
+    if n:
+        return frac_n
+    return rf"\frac{{1}}{{{frac_d}}}"
+
+
+def passo_ajuste_fundamental(expressao: sp.Expr, ponto: sp.Expr, f) -> Passo:
+    return Passo(
+        titulo="Ajuste algébrico",
+        explicacao=(
+            "Multiplicamos e dividimos pelo que falta para que apareça exatamente "
+            "o limite fundamental (u no denominador, igual ao argumento). O que "
+            "sobra fora dele é uma expressão mais simples."
+        ),
+        latex=(
+            f"{limite_tex(expressao, ponto)} = "
+            rf"\lim_{{x \to {tex(ponto)}}} {_fator_fundamental_tex(f)} \cdot "
+            rf"{_com_parenteses(f.resto) if f.resto.is_Add else tex(f.resto)}"
+        ),
+    )
+
+
+def passo_produto_de_limites(expressao: sp.Expr, ponto: sp.Expr, f) -> Passo:
+    quociente = f.valor_denominador is not None
+    explicacao = (
+        "O limite de um produto é o produto dos limites, quando cada um existe."
+    )
+    if quociente:
+        explicacao = (
+            "Usamos as regras do produto e do quociente de limites: o limite de "
+            "um produto (ou quociente) é o produto (ou quociente) dos limites, "
+            "desde que existam e o do denominador não seja 0. Aqui o limite do "
+            f"bloco do denominador vale {texto_ponto(f.valor_denominador)}, "
+            "que é diferente de 0."
+        )
+    explicacao += (
+        f" A parte do limite fundamental vale {texto_ponto(f.fator)}; falta "
+        "calcular o limite do que sobrou."
+    )
+    resto = _com_parenteses(f.resto) if f.resto.is_Add else tex(f.resto)
+    return Passo(
+        titulo=("Limite do produto e do quociente" if quociente
+                else "Limite do produto"),
+        explicacao=explicacao,
+        latex=(
+            rf"{limite_tex(expressao, ponto)} = {tex(f.fator)} \cdot "
+            rf"\lim_{{x \to {tex(ponto)}}} {resto}"
+        ),
+    )
+
+
+def passo_tecnica_sem_conclusao(motivo: str | bool) -> Passo:
+    """motivo: "divergiu" (ou True), "nao_confirmado" ou "sem_conclusao"."""
+    if motivo is True:
+        motivo = "divergiu"
+    if motivo == "divergiu":
         return Passo(
             titulo="Conferência não coincidiu",
             explicacao=(
                 "Ao conferir o resultado com um cálculo independente, os valores "
                 "não coincidiram. Por isso não afirmamos esse resultado: não "
                 "conseguimos concluir o limite por esta técnica."
+            ),
+            latex=r"\text{resultado não confirmado}",
+        )
+    if motivo == "nao_confirmado":
+        return Passo(
+            titulo="Não conseguimos concluir",
+            explicacao=(
+                "Não foi possível confirmar o resultado com um cálculo independente "
+                "(o cálculo demorou demais ou foi inconclusivo). Por isso não "
+                "afirmamos esse valor: não conseguimos concluir o limite."
             ),
             latex=r"\text{resultado não confirmado}",
         )

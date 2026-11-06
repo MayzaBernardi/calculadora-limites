@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import sympy as sp
 
 from app.motor.entrada import x
+from app.motor.formas import lados_definidos, limite_da_parte
 
 # Acima disso o factor do SymPy fica lento demais (grau 300 leva ~5 s; grau 100 leva menos de 1 s).
 GRAU_MAXIMO = 100
@@ -165,3 +166,117 @@ def racionalizar(expressao: sp.Expr, ponto: sp.Expr) -> Racionalizacao | None:
         primeiro, segundo, produto, novo_num, novo_den, simplificada, fator,
         resto, _tem_raiz(outra),
     )
+
+
+@dataclass
+class Bloco:
+    lado: str                   # "numerador" ou "denominador"
+    nome: str                   # nome curto para a explicação
+    u: sp.Expr                  # argumento que tende a 0
+    g: sp.Expr                  # o fator reconhecido, ex.: sen(3x)
+    h: sp.Expr                  # com o que ele se compara, ex.: 3x (ou u²)
+    valor: sp.Expr              # limite de g/h quando u -> 0
+    formula: str                # o limite fundamental em LaTeX
+
+
+@dataclass
+class Fundamentais:
+    numerador: sp.Expr
+    denominador: sp.Expr
+    blocos: list[Bloco]
+    fator: sp.Expr              # produto dos limites fundamentais (valor1 / valor2)
+    resto: sp.Expr              # o que sobra para calcular
+    valor_denominador: sp.Expr | None = None  # valor do bloco do denominador
+
+
+def _bloco_de(fator: sp.Expr, lado: str) -> Bloco | None:
+    """Reconhece um dos limites fundamentais em um fator, ou None."""
+    if fator.func in (sp.sin, sp.tan):
+        u = fator.args[0]
+        nome = "sen" if fator.func == sp.sin else "tg"
+        letra = r"\sin" if fator.func == sp.sin else r"\tan"
+        return Bloco(lado, nome, u, fator, u, sp.Integer(1),
+                     rf"\lim_{{u \to 0}} \frac{{{letra} u}}{{u}} = 1")
+    if fator.is_Pow and fator.exp == 2 and fator.base.func == sp.sin:
+        u = fator.base.args[0]
+        return Bloco(lado, "sen²", u, fator, u**2, sp.Integer(1),
+                     r"\lim_{u \to 0} \frac{\sin^{2} u}{u^{2}} = 1")
+    if fator.func == sp.log:
+        u = fator.args[0] - 1
+        return Bloco(lado, "ln(1+u)", u, fator, u, sp.Integer(1),
+                     r"\lim_{u \to 0} \frac{\ln(1 + u)}{u} = 1")
+    if fator.is_Add and len(fator.args) == 2:
+        if sp.Integer(-1) in fator.args:
+            outro = [a for a in fator.args if a != -1][0]
+            if outro.func == sp.exp:
+                u = outro.args[0]
+                return Bloco(lado, "e^u-1", u, fator, u, sp.Integer(1),
+                             r"\lim_{u \to 0} \frac{e^{u} - 1}{u} = 1")
+            if (outro.is_Pow and outro.base.is_number and outro.base.is_positive
+                    and outro.base != 1 and outro.exp.has(x)):
+                u = outro.exp
+                return Bloco(lado, "a^u-1", u, fator, u, sp.log(outro.base),
+                             rf"\lim_{{u \to 0}} \frac{{{sp.latex(outro.base)}^{{u}} - 1}}{{u}}"
+                             rf" = {sp.latex(sp.log(outro.base), ln_notation=True)}")
+        if sp.Integer(-1) in fator.args:
+            outro = [a for a in fator.args if a != -1][0]
+            if outro.func == sp.cos:
+                u = outro.args[0]
+                return Bloco(lado, "cos-1", u, fator, u**2, -sp.Rational(1, 2),
+                             r"\lim_{u \to 0} \frac{\cos u - 1}{u^{2}} = -\frac{1}{2}")
+        if sp.Integer(1) in fator.args:
+            outro = [a for a in fator.args if a != 1][0]
+            if outro.is_Mul and len(outro.args) == 2 and outro.args[0] == -1 \
+                    and outro.args[1].func == sp.cos:
+                u = outro.args[1].args[0]
+                return Bloco(lado, "1-cos", u, fator, u**2, sp.Rational(1, 2),
+                             r"\lim_{u \to 0} \frac{1 - \cos u}{u^{2}} = \frac{1}{2}")
+    return None
+
+
+def _acha_bloco(parte: sp.Expr, lado: str, ponto: sp.Expr, lados: list):
+    """Procura em `parte` (um produto) um fator fundamental com u -> 0 em todos
+    os `lados` onde a função existe. Devolve (bloco, demais fatores) ou
+    (None, parte)."""
+    fatores = list(sp.Mul.make_args(parte))
+    for i, fator in enumerate(fatores):
+        bloco = _bloco_de(fator, lado)
+        if bloco is None or not bloco.u.has(x):
+            continue
+        if all(limite_da_parte(bloco.u, ponto, l) == 0 for l in lados):
+            return bloco, sp.Mul(*(fatores[:i] + fatores[i + 1:]))
+    return None, parte
+
+
+def aplicar_limites_fundamentais(
+    expressao: sp.Expr, ponto: sp.Expr
+) -> Fundamentais | None:
+    """Reconhece sen u/u, tg u/u, (e^u-1)/u, ln(1+u)/u, (1-cos u)/u², sen²u/u²
+    e (a^u-1)/u com u -> 0, no numerador e/ou no denominador. Reescreve
+    N/D = [g1/h1 ÷ g2/h2] · [h1·resto1 / (h2·resto2)] e devolve o fator
+    fundamental e o resto, que o resolvedor calcula em seguida. u precisa
+    tender a 0 por todos os lados em que a função existe."""
+    if sp.count_ops(expressao) > 100:
+        return None
+    numerador, denominador = sp.fraction(expressao)
+    if denominador == 1:
+        return None
+    lados = lados_definidos(expressao, ponto) if ponto.is_finite else [None]
+    if not lados:
+        return None
+    bloco_n, resto_n = _acha_bloco(numerador, "numerador", ponto, lados)
+    bloco_d, resto_d = _acha_bloco(denominador, "denominador", ponto, lados)
+    if bloco_n is None and bloco_d is None:
+        return None
+    um = sp.Integer(1)
+    h_n, v_n = (bloco_n.h, bloco_n.valor) if bloco_n else (um, um)
+    h_d, v_d = (bloco_d.h, bloco_d.valor) if bloco_d else (um, um)
+    resto = h_n * resto_n / (h_d * resto_d)
+    if not resto.atoms(sp.Function):
+        resto = sp.cancel(sp.together(resto))  # com funções, o cancel desfaria os fatores
+    if resto == expressao or resto.has(sp.nan, sp.zoo, sp.oo):
+        return None
+    blocos = [b for b in (bloco_n, bloco_d) if b is not None]
+    fator = sp.expand_log(v_n / v_d, force=True)
+    return Fundamentais(numerador, denominador, blocos, fator, resto,
+                        v_d if bloco_d else None)
