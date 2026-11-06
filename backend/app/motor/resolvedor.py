@@ -5,7 +5,14 @@ import sympy as sp
 
 from app.motor import passos
 from app.motor.entrada import x
+from app.motor.formas import identificar_forma, lados_definidos
 from app.motor.passos import Passo
+from app.motor.seguro import limite_seguro
+from app.motor.tecnicas import (
+    aplicar_limites_fundamentais, fatorar_e_cancelar, racionalizar,
+)
+
+PROFUNDIDADE_MAXIMA = 5
 
 # Funções descontínuas: a substituição direta não vale para elas.
 FUNCOES_DESCONTINUAS = (sp.floor, sp.ceiling, sp.sign)
@@ -17,6 +24,7 @@ class Resultado:
     existe: bool | None = None
     valor: sp.Expr | None = None
     passos: list[Passo] = field(default_factory=list)
+    validado: bool | None = None  # conferido com sp.limit (None: não conferido)
 
 
 def _tem_zero_elevado_a_zero(expressao: sp.Expr, ponto: sp.Expr) -> bool:
@@ -45,7 +53,76 @@ def substituir(expressao: sp.Expr, ponto: sp.Expr) -> tuple[sp.Expr | None, str]
     return valor, ""
 
 
-def resolver(expressao: sp.Expr, ponto: sp.Expr) -> Resultado:
+TAMANHO_MAXIMO_CONFERENCIA = 300  # acima disso (sp.count_ops) não conferimos
+
+
+def conferir_com_sympy(
+    expressao: sp.Expr, ponto: sp.Expr, valor: sp.Expr, lado: str = "+-"
+) -> bool | None:
+    """Compara o valor com sp.limit. `lado` é "+", "-" ou "+-" (os dois lados,
+    padrão); use "+" ou "-" para limites de um lado só. Devolve None se a
+    expressão for grande demais ou se o SymPy não conseguir calcular."""
+    if sp.count_ops(expressao) > TAMANHO_MAXIMO_CONFERENCIA:
+        return None
+    if lado == "+-" and ponto.is_finite:
+        # função definida só de um lado: compara com o limite desse lado
+        lados = lados_definidos(expressao, ponto)
+        if lados is None:
+            return None
+        if len(lados) == 1:
+            lado = lados[0]
+    esperado = limite_seguro(expressao, ponto, lado if ponto.is_finite else None)
+    if esperado is None or esperado.has(sp.nan, sp.zoo, sp.AccumBounds):
+        return None
+    if esperado == valor:
+        return True
+    if esperado.is_infinite or valor.is_infinite:
+        return False
+    return bool(sp.simplify(esperado - valor) == 0)
+
+
+def _continuar(
+    original: sp.Expr, ponto: sp.Expr, nova: sp.Expr, base: list[Passo],
+    passos_tecnica: list[Passo], profundidade: int,
+    multiplicador: sp.Expr = sp.Integer(1),
+) -> Resultado:
+    """Resolve a expressão transformada por uma técnica e confere com o SymPy.
+    Se a técnica não conclui, ou o valor diverge do sp.limit, descarta os
+    passos da técnica e acrescenta um passo honesto no lugar."""
+    sub = resolver(nova, ponto, profundidade + 1)
+    if not (sub.resolvido and sub.existe):
+        return Resultado(
+            resolvido=False, passos=base + [passos.passo_tecnica_sem_conclusao("sem_conclusao")]
+        )
+    valor = sp.simplify(multiplicador * sub.valor)
+    validado = conferir_com_sympy(original, ponto, valor)
+    if validado is False:
+        return Resultado(
+            resolvido=False, validado=False,
+            passos=base + [passos.passo_tecnica_sem_conclusao("divergiu")],
+        )
+    if validado is None and ponto.is_finite:
+        # sem confirmação independente não afirmamos o valor de uma técnica
+        return Resultado(
+            resolvido=False,
+            passos=base + [passos.passo_tecnica_sem_conclusao("nao_confirmado")],
+        )
+    lista = base + passos_tecnica + sub.passos[1:]  # o 1º repete o limite já mostrado
+    lista.append(passos.passo_resultado(original, ponto, valor))
+    return Resultado(
+        resolvido=True, existe=True, valor=valor, passos=lista, validado=validado
+    )
+
+
+def _decimais_para_racionais(expr: sp.Expr) -> sp.Expr:
+    """0.5 vira 1/2: a entrada decimal é exata para o aluno."""
+    return expr.xreplace({f: sp.Rational(str(f)) for f in expr.atoms(sp.Float)})
+
+
+def resolver(expressao: sp.Expr, ponto: sp.Expr, profundidade: int = 0) -> Resultado:
+    if profundidade == 0:
+        expressao = _decimais_para_racionais(expressao)
+        ponto = _decimais_para_racionais(ponto)
     lista = [passos.passo_funcao_dada(expressao, ponto)]
 
     if ponto.is_finite:
@@ -55,5 +132,44 @@ def resolver(expressao: sp.Expr, ponto: sp.Expr) -> Resultado:
             return Resultado(resolvido=True, existe=True, valor=valor, passos=lista)
         lista.append(passos.passo_substituicao_sem_resultado(expressao, ponto, motivo))
 
-    # As próximas etapas (0/0, laterais, infinito...) entram aqui.
+    forma = identificar_forma(expressao, ponto)
+    if forma is not None:
+        lista.append(passos.passo_forma_indeterminada(expressao, ponto, forma))
+
+    if forma == "0/0" and profundidade < PROFUNDIDADE_MAXIMA:
+        fatoracao = fatorar_e_cancelar(expressao, ponto)
+        if fatoracao is not None:
+            tecnica = [
+                passos.passo_fatoracao(
+                    expressao, ponto, fatoracao.numerador, fatoracao.denominador,
+                    fatoracao.fator_comum),
+                passos.passo_cancelamento(
+                    fatoracao.fator_comum, fatoracao.simplificada,
+                    fatoracao.numerador, fatoracao.denominador, ponto),
+            ]
+            return _continuar(
+                expressao, ponto, fatoracao.simplificada, lista, tecnica, profundidade)
+
+        racionalizacao = racionalizar(expressao, ponto)
+        if racionalizacao is not None:
+            tecnica = [
+                passos.passo_conjugado(racionalizacao),
+                passos.passo_multiplicacao_conjugado(expressao, ponto, racionalizacao),
+                passos.passo_simplificacao_racionalizacao(
+                    expressao, ponto, racionalizacao),
+            ]
+            return _continuar(
+                expressao, ponto, racionalizacao.simplificada, lista, tecnica,
+                profundidade)
+
+        fundamentais = aplicar_limites_fundamentais(expressao, ponto)
+        if fundamentais is not None:
+            tecnica = [passos.passo_limite_fundamental(b, ponto) for b in fundamentais.blocos]
+            tecnica.append(passos.passo_ajuste_fundamental(expressao, ponto, fundamentais))
+            tecnica.append(passos.passo_produto_de_limites(expressao, ponto, fundamentais))
+            return _continuar(
+                expressao, ponto, fundamentais.resto, lista, tecnica, profundidade,
+                multiplicador=fundamentais.fator)
+
+    # As próximas etapas (laterais, infinito, L'Hôpital...) entram aqui.
     return Resultado(resolvido=False, passos=lista)

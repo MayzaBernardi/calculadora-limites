@@ -85,7 +85,7 @@ calculadora-limites/
 ## 4. Etapas de desenvolvimento
 
 1. Leitura da entrada e substituição direta — **FEITA**
-2. Indeterminação 0/0 (fatoração, racionalização, limites fundamentais)
+2. Indeterminação 0/0 (fatoração, racionalização, limites fundamentais) — **FEITA**
 3. Limites laterais, k/0 e domínio de um lado só
 4. Limites no infinito
 5. L'Hôpital, ∞−∞, 0·∞ e indeterminações com potência
@@ -103,41 +103,78 @@ autenticado). Raiz local: `/root/calculadoraLimites`.
 
 Situação das branches no GitHub:
 
-- `main`: já contém a base do projeto e a Etapa 1 (PRs #1 e #2 mesclados pela
-  dona do projeto).
-- `docs/contexto-projeto`: só acrescenta este arquivo sobre a `main`. Se o PR
-  dela ainda não foi mesclado, parta dela para a próxima etapa.
+- `main`: base do projeto, Etapa 1 e agentes do Claude Code (PRs #1 a #4).
+- `feature/etapa-2-zero-sobre-zero`: Etapa 2 concluída, um commit por técnica:
+  `650f08e` identificação de formas indeterminadas, `21fa078` fatoração,
+  `1e930f0` racionalização pelo conjugado e, por último, limites fundamentais
+  (ver `git log` para o hash). Ainda falta abrir o PR e mesclar.
 
 Não presuma: rode `git fetch` e confira `git log --oneline --graph --all`.
 
 Ambiente: `backend/.venv` já existe e é ignorado pelo git. Se faltar, rode
 `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` dentro de
 `backend/` (no Ubuntu pode ser preciso `apt install python3.12-venv`). Testes:
-`cd backend && .venv/bin/pytest -q` (hoje: 53 passando).
+`cd backend && .venv/bin/pytest -q` (hoje: 215 passando, em cerca de 15 s; alguns testes esperam o timeout de 3 s).
 
-**Código existente em `backend/app/motor/`:**
+**Código em `backend/app/motor/` (fim da Etapa 2):**
 
-- `entrada.py`
+- `entrada.py` (sem mudanças desde a Etapa 1)
   - Define `x` (símbolo real) e `ErroEntrada` (a mensagem vai para o usuário).
   - `ler_funcao(texto)` aceita `sen`, `tg`, `ln`, `raiz`, `piso`, `|u|`, `^`,
-    `e`, `pi` e multiplicação implícita (`2x`). Um whitelist de caracteres e
-    um `global_dict` restrito protegem o `eval`.
+    `e`, `pi` e multiplicação implícita (`2x`). Whitelist de caracteres e
+    `global_dict` restrito protegem o `eval`.
   - `ler_ponto(texto)` devolve número, `oo` ou `-oo`; decimal vira `Rational`.
+- `seguro.py` (novo)
+  - `limite_seguro(expr, ponto, direcao, tempo=3.0)`: todo `sp.limit` do motor
+    passa por aqui. Roda em processo filho (fork) com timeout e devolve `None`
+    se estourar (`executar_com_timeout` serve para outras contas). Antes, reescreve `a**x` (bug do SymPy em -oo) e
+    `sqrt(quadrado perfeito)` como `Abs`. A API da Etapa 6 deve usá-lo.
+- `formas.py` (novo)
+  - `identificar_forma(expr, ponto)` devolve `"0/0"`, `"oo/oo"`, `"k/0"`,
+    `"oo/0"`, `"0*oo"`, `"oo-oo"`, `"1^oo"`, `"0^0"`, `"oo^0"` ou `None`.
+    Em ponto finito a forma precisa ser a mesma pelos dois lados (lados onde a
+    função existe); se diferem, `None` (a Etapa 3 trata laterais).
+  - `limite_da_parte`, `definida_no_lado` e `lados_definidos` (amostra numérica
+    em float, dentro de `executar_com_timeout`; se não der para avaliar a
+    tempo o lado é "não confiável" e a forma vira `None`).
+- `tecnicas.py` (novo)
+  - `fatorar_e_cancelar` (função racional, grau até 100).
+  - `racionalizar` (conjugado de binômio com `sqrt`; raiz nos dois lados é
+    feita em duas passadas pelo resolvedor).
+  - `aplicar_limites_fundamentais` (sen u/u, tg u/u, (e^u-1)/u, ln(1+u)/u,
+    (1-cos u)/u², (cos u-1)/u², sen²u/u², (a^u-1)/u, com u -> 0 por todos os
+    lados em que a função existe).
 - `passos.py`
-  - `Passo(titulo, explicacao, latex)` é um dataclass.
-  - Helpers: `tex()`, `texto_ponto()`, `limite_tex()`, `substituicao_tex()`.
-  - Construtores de passo: `passo_funcao_dada`, `passo_substituicao_direta`,
-    `passo_substituicao_sem_resultado`.
+  - `Passo(titulo, explicacao, latex)`; helpers `tex`, `tex_ordenado`,
+    `texto_ponto`, `limite_tex` (soma entra entre parênteses) e
+    `substituicao_tex`.
+  - Construtores de passo de cada técnica, mais `passo_forma_indeterminada`,
+    `passo_resultado` e `passo_tecnica_sem_conclusao`.
 - `resolvedor.py`
-  - `Resultado(resolvido, existe, valor, passos)` é um dataclass.
-  - `substituir(expr, ponto)` devolve `(valor, "")` ou `(None, motivo)`. Recusa
-    funções com salto (floor, ceiling, sign), `0^0`, nan, zoo/oo e resultados
-    não reais.
-  - `resolver(expr, ponto)` é o fluxo principal. Hoje só faz a substituição
-    direta e tem um comentário marcando onde entram as próximas etapas.
+  - `Resultado(resolvido, existe, valor, passos, validado)`; `validado` diz se
+    o valor bateu com `sp.limit` (`None`: não conferido).
+  - `resolver(expr, ponto, profundidade=0)`: substituição direta, identifica a
+    forma e, se for 0/0, tenta fatoração, racionalização e limites
+    fundamentais, nessa ordem (`PROFUNDIDADE_MAXIMA = 5`). `_continuar`
+    resolve a expressão transformada e confere com `conferir_com_sympy`. Se a
+    técnica não conclui ou diverge do SymPy, descarta os passos dela e
+    registra um passo honesto ("Não conseguimos concluir" / "Conferência não
+    coincidiu"), com `resolvido=False`. Em ponto finito, se a conferência não
+    confirma (`validado is None`), a técnica também não afirma o valor; só a
+    substituição direta pura vale sem conferência. Decimais viram racionais.
 
 Testes em `backend/testes/test_motor.py`; `pytest.ini` já configura
 `pythonpath = .`.
+
+Limitações conhecidas ao fim da Etapa 2: k/0 e laterais (Etapa 3), pontos
+infinitos (Etapa 4), L'Hôpital e formas com potência (Etapa 5) ainda não são
+resolvidos; `(sqrt(x)+x)/x` em 0 e `sen(x)/x^2` em 0 terminam sem conclusão.
+Limites fundamentais não tratam: deslocamento por π (`sen(pi*x)/(x-1)` em 1),
+`x*sen(1/x)`, `(sen x - x)/x^3` (precisa de L'Hôpital ou Taylor) e potências
+de sen diferentes de 2. O teste de domínio (`definida_no_lado`) é numérico,
+com amostra a 1e-6 do ponto, e roda em processo com timeout de 3 s; funções
+que oscilam muito perto do ponto podem ser classificadas errado ou ficar sem
+conclusão (de propósito, nunca com valor errado).
 
 ## 6. Como trabalhar (pedido explícito da dona do projeto)
 
@@ -188,9 +225,9 @@ a entrada, se sobrar tempo.
 
 ## 9. Próximo passo
 
-Rode `git fetch` e confirme o estado do repositório (`git status`,
-`git log --oneline --graph --all`, `pytest`). Depois crie
-`feature/etapa-2-zero-sobre-zero` a partir de `origin/main` (ou de
-`docs/contexto-projeto`, se o PR dela ainda estiver aberto) e comece pela
-identificação de formas indeterminadas em `formas.py`, seguida das técnicas de
-0/0 uma de cada vez. Faça um commit por técnica.
+Etapa 2 concluída. Rode `git fetch`, confirme o estado (`git status`,
+`git log --oneline --graph --all`, `pytest`) e, depois que o PR da Etapa 2 for
+mesclado, crie `feature/etapa-3-laterais-k-sobre-zero` (a partir da `main`
+atualizada ou da branch da Etapa 2). Etapa 3: limites laterais, k/0 com
+análise de sinal e domínio de um lado só, usando `limite_seguro` com a
+direção e passando o `lado` a `conferir_com_sympy`.
