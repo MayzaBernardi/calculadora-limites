@@ -6,6 +6,7 @@ import sympy as sp
 from app.motor import passos
 from app.motor.entrada import x
 from app.motor.formas import identificar_forma, lados_definidos
+from app.motor.laterais import analisar_sinais, calcular_laterais, concluir
 from app.motor.passos import Passo
 from app.motor.seguro import limite_seguro
 from app.motor.tecnicas import (
@@ -25,6 +26,8 @@ class Resultado:
     valor: sp.Expr | None = None
     passos: list[Passo] = field(default_factory=list)
     validado: bool | None = None  # conferido com sp.limit (None: não conferido)
+    esquerda: sp.Expr | None = None  # limite lateral (ponto finito)
+    direita: sp.Expr | None = None
 
 
 def _tem_zero_elevado_a_zero(expressao: sp.Expr, ponto: sp.Expr) -> bool:
@@ -33,6 +36,18 @@ def _tem_zero_elevado_a_zero(expressao: sp.Expr, ponto: sp.Expr) -> bool:
         base = potencia.base.subs(x, ponto)
         expoente = potencia.exp.subs(x, ponto)
         if base == 0 and expoente == 0:
+            return True
+    return False
+
+
+def _pode_sair_dos_reais(expressao: sp.Expr) -> bool:
+    """Polinômios, quocientes, sen, cos, e^x... são reais onde existem. Só
+    logaritmo, potência de expoente não inteiro e afins podem dar não real."""
+    seguras = (sp.sin, sp.cos, sp.tan, sp.exp, sp.Abs, sp.floor, sp.ceiling, sp.sign)
+    for parte in sp.preorder_traversal(expressao):
+        if parte.is_Pow and not parte.exp.is_Integer and parte.base != sp.E:
+            return True
+        if parte.is_Function and not isinstance(parte, seguras):
             return True
     return False
 
@@ -50,6 +65,12 @@ def substituir(expressao: sp.Expr, ponto: sp.Expr) -> tuple[sp.Expr | None, str]
         return None, "aparece uma divisão por zero ou um valor infinito."
     if valor.has(sp.I) or valor.is_real is False:
         return None, "o ponto está fora do domínio da função (resultado não real)."
+    if _pode_sair_dos_reais(expressao) and lados_definidos(expressao, ponto) == []:
+        # f(ponto) dá real por coincidência, mas a função não é real ao redor
+        return None, (
+            "a conta dá um número, mas a função não está definida (nos reais) "
+            "nem à esquerda nem à direita do ponto, então não há limite a calcular."
+        )
     return valor, ""
 
 
@@ -114,12 +135,66 @@ def _continuar(
     )
 
 
+def _por_laterais(expressao: sp.Expr, ponto: sp.Expr, base: list[Passo]) -> Resultado | None:
+    """Compara os limites laterais (só os lados onde a função existe). Cobre
+    k/0 (com análise de sinal), laterais diferentes e domínio de um lado só."""
+    if not ponto.is_finite:
+        return None
+    laterais = calcular_laterais(expressao, ponto)
+    if laterais is None:
+        return None
+    conclusao = concluir(laterais)
+    lista = base + [passos.passo_laterais(expressao, ponto, laterais)]
+    analises = analisar_sinais(expressao, ponto, laterais)
+    if analises:
+        lista.append(passos.passo_analise_de_sinal(expressao, ponto, analises))
+    lista.append(passos.passo_conclusao_laterais(expressao, ponto, laterais, conclusao))
+    return Resultado(
+        resolvido=True, existe=conclusao.existe, valor=conclusao.valor, passos=lista,
+        validado=True if analises else None,
+        esquerda=laterais.esquerda, direita=laterais.direita,
+    )
+
+
+def _ou_laterais(
+    falha: Resultado, expressao: sp.Expr, ponto: sp.Expr, base: list[Passo]
+) -> Resultado:
+    """Se a técnica resolveu, devolve o resultado dela; senão tenta os laterais
+    (sem os passos descartados da técnica) e, se também não der, devolve a falha.
+    Quando a técnica divergiu do SymPy (validado False), mantém a falha honesta."""
+    if falha.resolvido or falha.validado is False:
+        return falha  # divergência com o SymPy não se esconde atrás dos laterais
+    return _por_laterais(expressao, ponto, base) or falha
+
+
 def _decimais_para_racionais(expr: sp.Expr) -> sp.Expr:
     """0.5 vira 1/2: a entrada decimal é exata para o aluno."""
     return expr.xreplace({f: sp.Rational(str(f)) for f in expr.atoms(sp.Float)})
 
 
+def _preencher_laterais(resultado: Resultado, expressao: sp.Expr, ponto: sp.Expr) -> Resultado:
+    """Garante os laterais no resultado final de um ponto finito (a API os mostra)."""
+    if not (ponto.is_finite and resultado.resolvido and resultado.existe):
+        return resultado
+    if resultado.esquerda is None and resultado.direita is None:
+        # o limite existe: vale o mesmo em cada lado onde a função está definida
+        lados = lados_definidos(expressao, ponto) or []
+        if "-" in lados:
+            resultado.esquerda = resultado.valor
+        if "+" in lados:
+            resultado.direita = resultado.valor
+    return resultado
+
+
 def resolver(expressao: sp.Expr, ponto: sp.Expr, profundidade: int = 0) -> Resultado:
+    resultado = _resolver(expressao, ponto, profundidade)
+    if profundidade == 0:
+        resultado = _preencher_laterais(
+            resultado, _decimais_para_racionais(expressao), _decimais_para_racionais(ponto))
+    return resultado
+
+
+def _resolver(expressao: sp.Expr, ponto: sp.Expr, profundidade: int) -> Resultado:
     if profundidade == 0:
         expressao = _decimais_para_racionais(expressao)
         ponto = _decimais_para_racionais(ponto)
@@ -147,8 +222,9 @@ def resolver(expressao: sp.Expr, ponto: sp.Expr, profundidade: int = 0) -> Resul
                     fatoracao.fator_comum, fatoracao.simplificada,
                     fatoracao.numerador, fatoracao.denominador, ponto),
             ]
-            return _continuar(
+            falha = _continuar(
                 expressao, ponto, fatoracao.simplificada, lista, tecnica, profundidade)
+            return _ou_laterais(falha, expressao, ponto, lista)
 
         racionalizacao = racionalizar(expressao, ponto)
         if racionalizacao is not None:
@@ -158,18 +234,20 @@ def resolver(expressao: sp.Expr, ponto: sp.Expr, profundidade: int = 0) -> Resul
                 passos.passo_simplificacao_racionalizacao(
                     expressao, ponto, racionalizacao),
             ]
-            return _continuar(
+            falha = _continuar(
                 expressao, ponto, racionalizacao.simplificada, lista, tecnica,
                 profundidade)
+            return _ou_laterais(falha, expressao, ponto, lista)
 
         fundamentais = aplicar_limites_fundamentais(expressao, ponto)
         if fundamentais is not None:
             tecnica = [passos.passo_limite_fundamental(b, ponto) for b in fundamentais.blocos]
             tecnica.append(passos.passo_ajuste_fundamental(expressao, ponto, fundamentais))
             tecnica.append(passos.passo_produto_de_limites(expressao, ponto, fundamentais))
-            return _continuar(
+            falha = _continuar(
                 expressao, ponto, fundamentais.resto, lista, tecnica, profundidade,
                 multiplicador=fundamentais.fator)
+            return _ou_laterais(falha, expressao, ponto, lista)
 
-    # As próximas etapas (laterais, infinito, L'Hôpital...) entram aqui.
-    return Resultado(resolvido=False, passos=lista)
+    # As próximas etapas (infinito, L'Hôpital...) entram aqui.
+    return _ou_laterais(Resultado(resolvido=False, passos=lista), expressao, ponto, lista)
