@@ -404,3 +404,118 @@ def passo_tecnica_sem_conclusao(motivo: str | bool) -> Passo:
         ),
         latex=r"\text{sem conclusão}",
     )
+
+
+def limite_lateral_tex(expressao: sp.Expr, ponto: sp.Expr, lado: str) -> str:
+    corpo = tex(expressao)
+    if expressao.is_Add:
+        corpo = rf"\left({corpo}\right)"
+    sinal = "-" if lado == "-" else "+"
+    return rf"\lim_{{x \to {tex(ponto)}^{{{sinal}}}}} {corpo}"
+
+
+def _nome_lado(lado: str) -> str:
+    return "esquerda" if lado == "-" else "direita"
+
+
+def _valor_texto(valor: sp.Expr) -> str:
+    return texto_ponto(valor).replace("oo", "∞")
+
+
+def passo_laterais(expressao: sp.Expr, ponto: sp.Expr, laterais) -> Passo:
+    """Mostra o limite de cada lado (e avisa quando a função só existe de um)."""
+    a = texto_ponto(ponto)
+    linhas, partes = [], []
+    for lado in ("-", "+"):
+        valor = laterais.valor(lado)
+        if valor is None:
+            partes.append(
+                f"Pela {_nome_lado(lado)} (x → {a}{'⁻' if lado == '-' else '⁺'}) a "
+                "função não está definida nos reais, então esse lado não conta."
+            )
+            continue
+        linhas.append(f"{limite_lateral_tex(expressao, ponto, lado)} = {tex(valor)}")
+        partes.append(
+            f"Pela {_nome_lado(lado)} (x → {a}{'⁻' if lado == '-' else '⁺'}) o limite é "
+            f"{_valor_texto(valor)}."
+        )
+    return Passo(
+        titulo="Limites laterais",
+        explicacao=(
+            "Para saber se o limite existe, olhamos os dois lados: x se aproximando "
+            f"de {a} por valores menores (esquerda, x → {a}⁻) e por valores maiores "
+            f"(direita, x → {a}⁺). " + " ".join(partes)
+        ),
+        latex=r" \qquad ".join(linhas),
+    )
+
+
+def _palavra_sinal(sinal: int) -> str:
+    return "positivo" if sinal > 0 else "negativo"
+
+
+def passo_analise_de_sinal(expressao: sp.Expr, ponto: sp.Expr, analises) -> Passo:
+    """k/0: o denominador vai a 0, então o quociente cresce sem limite; o sinal
+    de cada lado decide se vai a +∞ ou a −∞."""
+    a = texto_ponto(ponto)
+    frases, linhas = [], []
+    for an in analises:
+        simbolo = "⁻" if an.lado == "-" else "⁺"
+        resultado = "+∞" if an.resultado == sp.oo else "−∞"
+        frases.append(
+            f"Pela {_nome_lado(an.lado)} (x → {a}{simbolo}), o numerador é "
+            f"{_palavra_sinal(an.sinal_numerador)} e o denominador é "
+            f"{_palavra_sinal(an.sinal_denominador)} (e tende a 0), então o "
+            f"quociente é {_palavra_sinal(an.sinal_numerador * an.sinal_denominador)} "
+            f"e cresce sem limite: {resultado}."
+        )
+        linhas.append(
+            f"{limite_lateral_tex(expressao, ponto, an.lado)} = {tex(an.resultado)}"
+        )
+    return Passo(
+        titulo="Análise de sinal (divisão por zero)",
+        explicacao=(
+            "O denominador tende a 0 e o numerador não, então o quociente fica "
+            "cada vez maior em módulo. O que falta é o sinal, que depende do lado. "
+            + " ".join(frases)
+        ),
+        latex=r" \qquad ".join(linhas),
+    )
+
+
+def passo_conclusao_laterais(
+    expressao: sp.Expr, ponto: sp.Expr, laterais, conclusao
+) -> Passo:
+    a = texto_ponto(ponto)
+    lados = laterais.lados()
+    if len(lados) == 1:
+        lado = lados[0]
+        return Passo(
+            titulo="Função definida de um lado só",
+            explicacao=(
+                f"A função só existe à {_nome_lado(lado)} de {a}, então o limite é "
+                f"o limite desse lado: {_valor_texto(conclusao.valor)}."
+            ),
+            latex=f"{limite_tex(expressao, ponto)} = {tex(conclusao.valor)}",
+        )
+    if conclusao.existe:
+        return Passo(
+            titulo="Os laterais coincidem",
+            explicacao=(
+                "Os limites pela esquerda e pela direita são iguais, então o limite "
+                f"existe e vale {_valor_texto(conclusao.valor)}."
+            ),
+            latex=f"{limite_tex(expressao, ponto)} = {tex(conclusao.valor)}",
+        )
+    return Passo(
+        titulo="Os laterais são diferentes: o limite não existe",
+        explicacao=(
+            f"Pela esquerda o limite é {_valor_texto(laterais.esquerda)} e pela direita "
+            f"é {_valor_texto(laterais.direita)}. Como são diferentes, o limite "
+            f"quando x tende a {a} não existe."
+        ),
+        latex=(
+            f"{tex(laterais.esquerda)} \\neq {tex(laterais.direita)} "
+            r"\;\Rightarrow\; \text{o limite não existe}"
+        ),
+    )

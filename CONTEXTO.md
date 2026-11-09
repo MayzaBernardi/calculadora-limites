@@ -86,7 +86,7 @@ calculadora-limites/
 
 1. Leitura da entrada e substituição direta — **FEITA**
 2. Indeterminação 0/0 (fatoração, racionalização, limites fundamentais) — **FEITA**
-3. Limites laterais, k/0 e domínio de um lado só
+3. Limites laterais, k/0 e domínio de um lado só — **FEITA**
 4. Limites no infinito
 5. L'Hôpital, ∞−∞, 0·∞ e indeterminações com potência
 6. API (rota `/limite`)
@@ -110,16 +110,18 @@ Situação das branches no GitHub:
   via PR #5 (`89e3e31`).
 - `feature/etapa-2-zero-sobre-zero`: já mesclada na `main`; só falta apagar o
   remoto quando quiserem.
+- `feature/etapa-3-laterais-k-sobre-zero`: Etapa 3 concluída (confira o hash
+  com `git log`). Falta abrir o PR e mesclar.
 
 Não presuma: rode `git fetch` e confira `git log --oneline --graph --all`.
 
 Ambiente: `backend/.venv` já existe e é ignorado pelo git. Se faltar, rode
 `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` dentro de
 `backend/` (no Ubuntu pode ser preciso `apt install python3.12-venv`). Testes:
-`cd backend && .venv/bin/pytest -q` (hoje: 215 passando, em alguns segundos;
-alguns testes esperam o timeout de 3 s).
+`cd backend && .venv/bin/pytest -q` (hoje: 311 passando, em cerca de 35 s;
+cada limite roda em processo filho e alguns testes esperam o timeout de 3 s).
 
-**Código em `backend/app/motor/` (fim da Etapa 2):**
+**Código em `backend/app/motor/` (fim da Etapa 3):**
 
 - `entrada.py` (sem mudanças desde a Etapa 1)
   - Define `x` (símbolo real) e `ErroEntrada` (a mensagem vai para o usuário).
@@ -140,6 +142,14 @@ alguns testes esperam o timeout de 3 s).
   - `limite_da_parte`, `definida_no_lado` e `lados_definidos` (amostra numérica
     em float, dentro de `executar_com_timeout`; se não der para avaliar a
     tempo o lado é "não confiável" e a forma vira `None`).
+- `laterais.py` (Etapa 3)
+  - `calcular_laterais(expr, ponto)` devolve `Laterais(esquerda, direita)`,
+    com `None` no lado onde a função não existe; devolve `None` se algum lado
+    não pôde ser calculado de forma confiável (tempo, oscilação).
+  - `concluir(laterais)`: um lado só vale esse lado; dois lados iguais dão o
+    limite (inclusive ±∞); diferentes, o limite não existe.
+  - `analisar_sinais`: no k/0, sinal do numerador e do denominador de cada
+    lado (amostra numérica). Só explica se o sinal bate com o limite do SymPy.
 - `tecnicas.py` (novo)
   - `fatorar_e_cancelar` (função racional, grau até 100).
   - `racionalizar` (conjugado de binômio com `sqrt`; raiz nos dois lados é
@@ -154,8 +164,16 @@ alguns testes esperam o timeout de 3 s).
   - Construtores de passo de cada técnica, mais `passo_forma_indeterminada`,
     `passo_resultado` e `passo_tecnica_sem_conclusao`.
 - `resolvedor.py`
-  - `Resultado(resolvido, existe, valor, passos, validado)`; `validado` diz se
-    o valor bateu com `sp.limit` (`None`: não conferido).
+  - `Resultado(resolvido, existe, valor, passos, validado, esquerda, direita)`;
+    `validado` diz se o valor bateu com `sp.limit` (`None`: não conferido).
+    `existe=False` com `valor=None` é "o limite não existe". `esquerda` e
+    `direita` são os laterais em ponto finito (`None` no lado fora do domínio).
+  - `substituir` também recusa o ponto isolado fora do domínio: `x^x` em -1
+    dá -1 na conta, mas a função não é real em nenhum dos lados.
+  - Quando nenhuma técnica de 0/0 conclui (ou a forma é k/0, oo/0, laterais
+    diferentes, um lado só), `_por_laterais` calcula os laterais, registra os
+    passos (laterais, análise de sinal, conclusão) e resolve. Divergência de
+    uma técnica com o SymPy (`validado False`) não é escondida pelos laterais.
   - `resolver(expr, ponto, profundidade=0)`: substituição direta, identifica a
     forma e, se for 0/0, tenta fatoração, racionalização e limites
     fundamentais, nessa ordem (`PROFUNDIDADE_MAXIMA = 5`). `_continuar`
@@ -169,9 +187,13 @@ alguns testes esperam o timeout de 3 s).
 Testes em `backend/testes/test_motor.py`; `pytest.ini` já configura
 `pythonpath = .`.
 
-Limitações conhecidas ao fim da Etapa 2: k/0 e laterais (Etapa 3), pontos
-infinitos (Etapa 4), L'Hôpital e formas com potência (Etapa 5) ainda não são
-resolvidos; `(sqrt(x)+x)/x` em 0 e `sen(x)/x^2` em 0 terminam sem conclusão.
+Limitações conhecidas ao fim da Etapa 3: pontos infinitos (Etapa 4) ainda não
+são resolvidos. Na análise lateral o valor de cada lado vem do `sp.limit`
+(via `limite_seguro`) e os passos explicam a comparação e o sinal; a
+derivação passo a passo de 0·∞, 0^0 e afins (`x*ln(x)`, `x^x` em 0) fica para
+a Etapa 5. Funções que oscilam (`sen(1/x)` em 0) terminam sem conclusão.
+A Etapa 3 foi feita sem os agentes (indisponíveis na sessão); a revisão foi
+uma varredura de 1057 limites contra o `sp.limit`, com 0 divergências.
 Limites fundamentais não tratam: deslocamento por π (`sen(pi*x)/(x-1)` em 1),
 `x*sen(1/x)`, `(sen x - x)/x^3` (precisa de L'Hôpital ou Taylor) e potências
 de sen diferentes de 2. O teste de domínio (`definida_no_lado`) é numérico,
@@ -228,8 +250,7 @@ a entrada, se sobrar tempo.
 
 ## 9. Próximo passo
 
-Etapa 2 mesclada na `main` (PR #5). Etapa 3 em andamento na branch
-`feature/etapa-3-laterais-k-sobre-zero` (criada a partir da `main`
-atualizada): limites laterais, k/0 com análise de sinal e domínio de um lado
-só, usando `limite_seguro` com a direção e passando o `lado` a
-`conferir_com_sympy`.
+Etapa 3 concluída na branch `feature/etapa-3-laterais-k-sobre-zero` (falta o
+PR e o merge). Depois, criar `feature/etapa-4-limites-no-infinito` a partir
+da `main` atualizada: termo dominante de polinômios, divisão pela maior
+potência em ∞/∞ e casos como `sen(x)/x` e `1/x` em ±∞.

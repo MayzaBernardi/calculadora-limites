@@ -4,7 +4,7 @@ import pytest
 import sympy as sp
 
 from app.motor.entrada import ErroEntrada, ler_funcao, ler_ponto, x
-from app.motor.formas import identificar_forma, limite_da_parte
+from app.motor.formas import identificar_forma, lados_definidos, limite_da_parte
 from app.motor.seguro import limite_seguro
 from app.motor.passos import passo_forma_indeterminada
 from app.motor.resolvedor import resolver
@@ -74,6 +74,32 @@ def _resolver(funcao, ponto):
     return resolver(ler_funcao(funcao), ler_ponto(ponto))
 
 
+def _iguais(a, b):
+    return a == b or sp.simplify(a - b) == 0
+
+
+def _confere_com_sympy(r, funcao, ponto):
+    """Se o motor concluiu, o resultado bate com o sp.limit de cada lado (um
+    lado fora do domínio real não conta). Nunca chama sp.limit sem timeout."""
+    if not r.resolvido:
+        return
+    e, a = ler_funcao(funcao), ler_ponto(ponto)
+    lados = lados_definidos(e, a)
+    assert lados, "a função precisa existir de algum lado"
+    laterais = [limite_seguro(e, a, d) for d in lados]
+    laterais = [v for v in laterais if v is not None]
+    assert laterais, "sem referência do SymPy"
+    if r.existe:
+        assert all(_iguais(v, r.valor) for v in laterais)
+    else:
+        assert len(laterais) == 2 and not _iguais(*laterais)
+    for lado, valor in (("-", r.esquerda), ("+", r.direita)):
+        if lado in lados and valor is not None:
+            assert _iguais(limite_seguro(e, a, lado), valor)
+        if lado not in lados:
+            assert valor is None  # lado fora do domínio não tem lateral
+
+
 @pytest.mark.parametrize(
     "funcao, ponto, esperado",
     [
@@ -98,12 +124,8 @@ def test_substituicao_direta(funcao, ponto, esperado):
     "funcao, ponto",
     [
         ("(x^2-4)/(x-2)", "infinito"),  # ainda não tratado (etapa 4)
-        ("sen(x)/x^2", "0"),      # 0/0 sem técnica que conclua
-        ("1/x", "0"),             # k/0
-        ("x^x", "0"),             # 0^0 não vale 1 em limites
-        ("sqrt(x)", "-1"),        # fora do domínio
-        ("ln(x)", "-1"),          # fora do domínio
-        ("piso(x)", "2"),         # descontínua
+        ("sqrt(x)", "-1"),        # fora do domínio dos dois lados
+        ("ln(x)", "-1"),          # fora do domínio dos dois lados
         ("1/x", "infinito"),      # ainda não tratado (etapa 4)
     ],
 )
@@ -166,9 +188,10 @@ def test_identificar_forma(funcao, ponto, esperada):
     assert identificar_forma(ler_funcao(funcao), ler_ponto(ponto)) == esperada
 
 
-def test_zero_sobre_zero_registra_passo_sem_resolver():
-    r = _resolver("sen(x)/x^2", "0")  # nenhuma técnica conclui
-    assert not r.resolvido
+def test_zero_sobre_zero_registra_passo_antes_dos_laterais():
+    r = _resolver("sen(x)/x^2", "0")  # nenhuma técnica de 0/0 conclui
+    assert [p.titulo for p in r.passos].index("Indeterminação 0/0") < [
+        p.titulo for p in r.passos].index("Limites laterais")
     passo = next(p for p in r.passos if p.titulo == "Indeterminação 0/0")
     assert "simplificar" in passo.explicacao and passo.latex
 
@@ -281,21 +304,26 @@ def test_fatoracao(funcao, ponto, esperado):
 )
 def test_fatoracao_nao_resolve(funcao, ponto):
     r = _resolver(funcao, ponto)
-    assert not r.resolvido and r.valor is None
+    assert "Fatoração" not in [p.titulo for p in r.passos]
+    if ponto == "infinito":
+        assert not r.resolvido and r.valor is None
+    else:
+        _confere_com_sympy(r, funcao, ponto)  # quem conclui é a análise lateral
 
 
 def test_fatoracao_respeita_limite_de_profundidade():
     expr, p = ler_funcao("(x^2-4)/(x-2)"), ler_ponto("2")
     from app.motor.resolvedor import PROFUNDIDADE_MAXIMA
-    assert not resolver(expr, p, PROFUNDIDADE_MAXIMA).resolvido
+    r = resolver(expr, p, PROFUNDIDADE_MAXIMA)
+    assert "Fatoração" not in [t.titulo for t in r.passos]
 
 
 def test_fatoracao_grau_alto_nao_trava():
     for grau in (1000, 500):
         inicio = time.perf_counter()
         r = _resolver(f"(x^{grau}-1)/(x-1)", "1")
-        assert time.perf_counter() - inicio < 2
-        assert not r.resolvido
+        assert time.perf_counter() - inicio < 12
+        assert "Fatoração" not in [p.titulo for p in r.passos]
 
 
 def test_fatoracao_grau_100_resolve_rapido():
@@ -324,7 +352,7 @@ def test_fatoracao_sem_valor_errado(funcao, ponto):
     except ErroEntrada:
         pytest.skip("entrada não aceita esse ponto")
     r = resolver(ler_funcao(funcao), ponto_lido)
-    assert not r.resolvido and r.valor is None
+    _confere_com_sympy(r, funcao, ponto)
 
 
 def test_fatoracao_com_constante_mostra_fator_monico():
@@ -353,7 +381,7 @@ def test_texto_e_latex_dos_passos_de_fatoracao():
 
 def test_validado_none_fora_da_fatoracao():
     assert _resolver("x+1", "2").validado is None
-    assert _resolver("sen(x)/x^2", "0").validado is None
+    assert _resolver("|x|/x", "0").validado is None  # laterais, sem conferência extra
 
 
 def test_conferir_com_sympy_aceita_lado_e_ignora_expressao_grande():
@@ -438,8 +466,11 @@ def test_racionalizacao_denominador_diz_denominador():
 )
 def test_racionalizacao_nao_se_aplica(funcao, ponto):
     r = _resolver(funcao, ponto)
-    assert not r.resolvido and r.valor is None
     assert "Conjugado" not in [p.titulo for p in r.passos]
+    if ponto == "infinito":
+        assert not r.resolvido and r.valor is None
+    else:
+        _confere_com_sympy(r, funcao, ponto)
 
 
 def test_racionalizar_none_sem_erro():
@@ -455,9 +486,10 @@ def test_racionalizacao_nao_regride_fatoracao():
 
 
 def test_racionalizacao_nao_devolve_valor_errado():
-    # (sqrt(x)+x)/x em 0 diverge; a técnica pode ser tentada, mas nunca dar valor.
+    # (sqrt(x)+x)/x em 0 vai a +oo pela direita (só esse lado existe).
     r = _resolver("(sqrt(x)+x)/x", "0")
-    assert not r.resolvido and r.valor is None
+    assert r.resolvido and r.valor == sp.oo
+    _confere_com_sympy(r, "(sqrt(x)+x)/x", "0")
 
 
 # ---------- limite com timeout, conferência e passos honestos ----------
@@ -469,7 +501,7 @@ def test_limite_seguro_nao_trava_no_exemplo_ruim():
     r = resolver(expr, sp.Integer(1))
     assert time.perf_counter() - inicio < 10
     assert forma in ("0/0", None)
-    assert not r.resolvido
+    _confere_com_sympy(r, "(sqrt(x^2-2x+1)+x-1)/(x-1)", "1")
 
 
 def test_limite_seguro_devolve_none_no_timeout(monkeypatch):
@@ -506,9 +538,9 @@ def test_conferencia_divergente_descarta_passos_da_tecnica(monkeypatch):
 def test_tecnica_que_nao_conclui_descarta_passos():
     r = _resolver("(x^2-4)/(x-2)^2", "2")   # a fatoração deixa k/0
     titulos = [p.titulo for p in r.passos]
-    assert not r.resolvido
-    assert titulos[-1] == "Não conseguimos concluir"
-    assert "Fatoração" not in titulos
+    assert "Fatoração" not in titulos      # os passos da técnica foram descartados
+    assert r.resolvido and not r.existe    # os laterais (−∞ e +∞) concluem
+    assert titulos[-1].startswith("Os laterais são diferentes")
 
 
 @pytest.mark.parametrize(
@@ -519,9 +551,9 @@ def test_tecnica_que_nao_conclui_descarta_passos():
         ("(sqrt(x)+x)/x", "0"),
     ],
 )
-def test_racionalizacao_sem_valor_em_casos_divergentes(funcao, ponto):
+def test_racionalizacao_sem_valor_errado_em_casos_divergentes(funcao, ponto):
     r = _resolver(funcao, ponto)
-    assert not r.resolvido and r.valor is None
+    _confere_com_sympy(r, funcao, ponto)
 
 
 def test_racionalizacao_raiz_nos_dois_lados_passos():
@@ -613,8 +645,10 @@ def test_limites_fundamentais_nao_se_aplicam(funcao, ponto):
     r = _resolver(funcao, ponto)
     titulos = [p.titulo for p in r.passos]
     assert "Limite fundamental" not in titulos
-    if funcao != "(x^2-4)/(x-2)":
+    if ponto == "infinito":
         assert not r.resolvido and r.valor is None
+    else:
+        _confere_com_sympy(r, funcao, ponto)
 
 
 def test_fundamental_nao_e_usado_quando_fatoracao_resolve():
@@ -670,12 +704,14 @@ def test_fundamental_divergencia_descarta_passos(monkeypatch):
 def test_fundamentais_nao_afirmam_valor_com_lados_diferentes(funcao):
     inicio = time.perf_counter()
     r = _resolver(funcao, "0" if "pi" not in funcao else "1")
-    assert time.perf_counter() - inicio < 10
-    if "pi" in funcao:
-        # sen(pi x)/(x-1) em 1 tem limite -pi; só aceitamos o valor se confirmado
-        assert (not r.resolvido) or (r.validado is True and r.valor == -sp.pi)
+    assert time.perf_counter() - inicio < 15
+    assert "Limite fundamental" not in [p.titulo for p in r.passos]
+    if funcao == "sen(x)/|x|":
+        assert r.resolvido and not r.existe and (r.esquerda, r.direita) == (-1, 1)
+    elif "pi" in funcao:
+        assert r.resolvido and r.valor == -sp.pi
     else:
-        assert not r.resolvido and r.valor is None
+        _confere_com_sympy(r, funcao, "0")
 
 
 def test_definida_no_lado_tem_timeout(monkeypatch):
@@ -706,6 +742,7 @@ def test_forma_none_quando_lado_nao_confiavel(monkeypatch):
 def test_sem_conferencia_nao_afirma_valor(monkeypatch):
     from app.motor import resolvedor
     monkeypatch.setattr(resolvedor, "conferir_com_sympy", lambda *a, **k: None)
+    monkeypatch.setattr(resolvedor, "calcular_laterais", lambda *a, **k: None)
     r = _resolver("(x^2-4)/(x-2)", "2")
     assert not r.resolvido and r.valor is None
     assert r.passos[-1].titulo == "Não conseguimos concluir"
@@ -731,3 +768,278 @@ def test_texto_quociente_e_ln():
     assert "sen²(x)" in next(p for p in r3.passos if p.titulo == "Limite fundamental").explicacao
     lf = next(p for p in r3.passos if p.titulo == "Limite fundamental")
     assert r"\left(x\right)" not in lf.latex
+
+
+# ======================= Etapa 3: laterais, k/0 e domínio =======================
+
+from app.motor.laterais import (  # noqa: E402
+    Laterais, analisar_sinais, calcular_laterais, concluir,
+)
+
+oo = sp.oo
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto, existe, valor, esquerda, direita",
+    [
+        # k/0 com análise de sinal
+        ("1/x", "0", False, None, -oo, oo),
+        ("1/x^2", "0", True, oo, oo, oo),
+        ("-1/x^2", "0", True, -oo, -oo, -oo),
+        ("1/(x-1)", "1", False, None, -oo, oo),
+        ("1/(x-1)^2", "1", True, oo, oo, oo),
+        ("(x+1)/(x-2)", "2", False, None, -oo, oo),
+        ("(x-3)/(x-2)^2", "2", True, -oo, -oo, -oo),
+        ("1/(1-x)", "1", False, None, oo, -oo),
+        ("(x^2-1)/(x^2+2x+1)", "-1", False, None, oo, -oo),
+        ("tg(x)", "pi/2", False, None, oo, -oo),
+        # 0/0 que sobra como k/0 depois de simplificar
+        ("(x^2-4)/(x-2)^2", "2", False, None, -oo, oo),
+        ("sen(x)/x^2", "0", False, None, -oo, oo),
+        ("(1-cos(x))/x^3", "0", False, None, -oo, oo),
+        # laterais finitos e diferentes
+        ("|x|/x", "0", False, None, -1, 1),
+        ("sqrt(x^2)/x", "0", False, None, -1, 1),
+        ("sen(x)/|x|", "0", False, None, -1, 1),
+        ("piso(x)", "0", False, None, -1, 0),
+        ("piso(x)", "2", False, None, 1, 2),
+        # laterais iguais
+        ("|x|", "0", True, 0, 0, 0),
+        ("x*|x|/x", "0", True, 0, 0, 0),
+        # função definida de um lado só
+        ("ln(x)", "0", True, -oo, None, -oo),
+        ("sqrt(x)/x", "0", True, oo, None, oo),
+        ("x^x", "0", True, 1, None, 1),
+        ("x*ln(x)", "0", True, 0, None, 0),
+        ("sqrt(x)", "0", True, 0, None, 0),
+        ("sqrt(-x)", "0", True, 0, 0, None),
+        ("ln(1-x)", "1", True, -oo, -oo, None),
+    ],
+)
+def test_laterais_e_k_sobre_zero(funcao, ponto, existe, valor, esquerda, direita):
+    r = _resolver(funcao, ponto)
+    assert r.resolvido
+    assert r.existe is existe
+    assert r.valor == valor
+    assert (r.esquerda, r.direita) == (esquerda, direita)
+    _confere_com_sympy(r, funcao, ponto)
+    assert all(p.titulo and p.explicacao and p.latex for p in r.passos)
+
+
+def test_zoo_nunca_e_devolvido_como_valor():
+    for funcao, ponto in [("1/x", "0"), ("1/(x-1)", "1"), ("tg(x)", "pi/2")]:
+        r = _resolver(funcao, ponto)
+        assert r.valor is None and not r.existe
+
+
+def test_x_elevado_a_x_em_zero_so_considera_o_lado_direito():
+    r = _resolver("x^x", "0")
+    titulos = [p.titulo for p in r.passos]
+    assert "Função definida de um lado só" in titulos
+    lado = next(p for p in r.passos if p.titulo == "Limites laterais")
+    assert "direita" in lado.explicacao and "não está definida" in lado.explicacao
+
+
+def test_passos_k_sobre_zero_mostram_o_sinal_de_cada_lado():
+    r = _resolver("1/x", "0")
+    titulos = [p.titulo for p in r.passos]
+    assert titulos[:3] == [
+        "Limite a calcular", "Tentativa de substituição direta", "Divisão por zero"]
+    assert titulos[-3:] == [
+        "Limites laterais", "Análise de sinal (divisão por zero)",
+        "Os laterais são diferentes: o limite não existe"]
+    sinal = next(p for p in r.passos if p.titulo.startswith("Análise de sinal"))
+    assert "esquerda" in sinal.explicacao and "direita" in sinal.explicacao
+    assert "negativo" in sinal.explicacao and "−∞" in sinal.explicacao
+    assert "+∞" in sinal.explicacao
+    assert r"\lim_{x \to 0^{-}} \frac{1}{x} = -\infty" in sinal.latex
+    assert r"\lim_{x \to 0^{+}} \frac{1}{x} = \infty" in sinal.latex
+    assert r.validado is True  # o sinal amostrado concorda com o SymPy
+
+
+def test_k_sobre_zero_com_mesmo_sinal_dos_dois_lados_tem_limite_infinito():
+    r = _resolver("1/x^2", "0")
+    conclusao = r.passos[-1]
+    assert conclusao.titulo == "Os laterais coincidem"
+    assert "existe e vale ∞" in conclusao.explicacao
+    assert conclusao.latex.endswith(r"= \infty")
+
+
+def test_laterais_diferentes_texto_e_latex():
+    r = _resolver("|x|/x", "0")
+    ultimo = r.passos[-1]
+    assert ultimo.titulo == "Os laterais são diferentes: o limite não existe"
+    assert "Pela esquerda o limite é -1 e pela direita é 1" in ultimo.explicacao
+    assert r"-1 \neq 1" in ultimo.latex and "não existe" in ultimo.latex
+    assert r.validado is None  # sem análise de sinal (não é k/0)
+
+
+def test_passo_laterais_texto_e_latex():
+    r = _resolver("piso(x)", "0")
+    p = next(p for p in r.passos if p.titulo == "Limites laterais")
+    assert "esquerda, x → 0⁻" in p.explicacao and "direita, x → 0⁺" in p.explicacao
+    assert r"\lim_{x \to 0^{-}}" in p.latex and r"\lim_{x \to 0^{+}}" in p.latex
+    assert "-1" in p.latex and "0" in p.latex
+
+
+def test_substituicao_direta_ja_preenche_laterais():
+    r = _resolver("x^2+1", "3")
+    assert (r.esquerda, r.direita) == (10, 10) and r.valor == 10
+
+
+def test_tecnica_resolvida_tambem_informa_laterais():
+    r = _resolver("(x^2-4)/(x-2)", "2")
+    assert r.valor == 4 and (r.esquerda, r.direita) == (4, 4)
+    r = _resolver("(sqrt(x)+x)/x", "0")
+    assert r.valor == oo and (r.esquerda, r.direita) == (None, oo)
+
+
+def test_ponto_infinito_nao_usa_laterais():
+    r = _resolver("1/x", "infinito")
+    assert not r.resolvido
+    assert calcular_laterais(ler_funcao("1/x"), oo) is None
+    assert all(p.titulo != "Limites laterais" for p in r.passos)
+
+
+def test_fora_do_dominio_dos_dois_lados_nao_tem_limite():
+    assert calcular_laterais(ler_funcao("sqrt(x)"), sp.Integer(-1)) is None
+    r = _resolver("sqrt(x)", "-1")
+    assert not r.resolvido
+
+
+def test_calcular_laterais_unidade():
+    lat = calcular_laterais(ler_funcao("1/x"), sp.Integer(0))
+    assert (lat.esquerda, lat.direita) == (-oo, oo)
+    assert lat.lados() == ["-", "+"]
+    lat = calcular_laterais(ler_funcao("ln(x)"), sp.Integer(0))
+    assert lat.esquerda is None and lat.direita == -oo and lat.lados() == ["+"]
+
+
+@pytest.mark.parametrize(
+    "esquerda, direita, existe, valor",
+    [
+        (1, 1, True, 1),
+        (oo, oo, True, oo),
+        (-oo, -oo, True, -oo),
+        (sp.Rational(1, 2), sp.Rational(2, 4), True, sp.Rational(1, 2)),
+        (1, 2, False, None),
+        (-oo, oo, False, None),
+        (oo, -oo, False, None),
+        (None, 3, True, 3),
+        (3, None, True, 3),
+        (None, oo, True, oo),
+    ],
+)
+def test_concluir(esquerda, direita, existe, valor):
+    c = concluir(Laterais(esquerda, direita))
+    assert c.existe is existe and c.valor == valor
+
+
+def test_analise_de_sinal_unidade():
+    expr, ponto = ler_funcao("(x-3)/(x-2)^2"), sp.Integer(2)
+    lat = calcular_laterais(expr, ponto)
+    analises = analisar_sinais(expr, ponto, lat)
+    assert [(a.lado, a.sinal_numerador, a.sinal_denominador, a.resultado)
+            for a in analises] == [("-", -1, 1, -oo), ("+", -1, 1, -oo)]
+
+
+def test_analise_de_sinal_nao_se_aplica_a_laterais_finitos():
+    expr, ponto = ler_funcao("|x|/x"), sp.Integer(0)
+    assert analisar_sinais(expr, ponto, calcular_laterais(expr, ponto)) is None
+
+
+def test_analise_de_sinal_discordante_nao_explica():
+    # sinais amostrados não batem com o limite informado: não inventamos explicação
+    expr, ponto = ler_funcao("1/x"), sp.Integer(0)
+    errado = Laterais(esquerda=oo, direita=oo)
+    assert analisar_sinais(expr, ponto, errado) is None
+
+
+def test_divergencia_da_tecnica_nao_e_escondida_pelos_laterais(monkeypatch):
+    from app.motor import resolvedor
+    monkeypatch.setattr(resolvedor, "conferir_com_sympy", lambda *a, **k: False)
+    r = _resolver("(x^2-4)/(x-2)", "2")
+    assert not r.resolvido and r.validado is False
+    assert r.passos[-1].titulo == "Conferência não coincidiu"
+
+
+def test_laterais_sem_resposta_do_sympy_nao_afirmam_nada(monkeypatch):
+    from app.motor import laterais as modulo
+    monkeypatch.setattr(modulo, "limite_seguro", lambda *a, **k: None)
+    assert calcular_laterais(ler_funcao("1/x"), sp.Integer(0)) is None
+    r = _resolver("1/x", "0")
+    assert not r.resolvido and r.valor is None
+
+
+@pytest.mark.parametrize(
+    "funcao",
+    ["sen(1/x)", "x*sen(1/x)", "sen(x*e^(-1/x))/(x*e^(-1/x))", "cos(1/x)"],
+)
+def test_laterais_oscilantes_ou_lentos_terminam_sem_valor_errado(funcao):
+    inicio = time.perf_counter()
+    r = _resolver(funcao, "0")
+    assert time.perf_counter() - inicio < 15
+    _confere_com_sympy(r, funcao, "0")
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto",
+    [
+        ("1/x", "0"), ("1/x^3", "0"), ("1/(x+2)", "-2"), ("1/(x-1/2)", "1/2"),
+        ("(x+5)/(x^2-9)", "3"), ("(x+5)/(x^2-9)", "-3"), ("x/(x-pi)", "pi"),
+        ("1/(x^2-2x+1)", "1"), ("(2-x)/(x-1)^3", "1"), ("e^x/x", "0"),
+        ("ln(x)/x", "0"), ("ln(x)/x^2", "0"), ("1/ln(x)", "1"), ("1/sen(x)", "0"),
+        ("tg(x)", "pi/2"), ("1/tg(x)", "0"), ("sqrt(x)/(x-1)", "1"),
+        ("1/sqrt(x)", "0"), ("x/|x|", "0"), ("|x-1|/(x-1)", "1"),
+        ("piso(x)/x", "0"), ("piso(x)", "-3"), ("sen(x)/|x|", "0"),
+        ("(x^2-1)/(x-1)^2", "1"), ("(x+1)/(x^2-1)", "1"), ("(x-2)/(x^2-4x+4)", "2"),
+        ("ln(x)", "0"), ("sqrt(x)*ln(x)", "0"), ("x^x", "0"), ("x^(2x)", "0"),
+    ],
+)
+def test_etapa_3_confere_com_sympy(funcao, ponto):
+    inicio = time.perf_counter()
+    r = _resolver(funcao, ponto)
+    assert time.perf_counter() - inicio < 15
+    _confere_com_sympy(r, funcao, ponto)
+    if r.resolvido:
+        assert r.valor != sp.zoo and not (r.valor is not None and r.valor.has(sp.nan, sp.zoo))
+        assert all(p.titulo and p.explicacao and p.latex for p in r.passos)
+
+
+def test_nenhum_passo_antigo_regride_com_os_laterais():
+    for funcao, ponto, esperado in [
+        ("(x^2-4)/(x-2)", "2", 4), ("(sqrt(x+1)-1)/x", "0", sp.Rational(1, 2)),
+        ("sen(3x)/x", "0", 3), ("x+1", "2", 3),
+    ]:
+        r = _resolver(funcao, ponto)
+        assert r.valor == esperado
+        assert "Limites laterais" not in [p.titulo for p in r.passos]
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto",
+    [
+        ("x^x", "-1"),               # (-1)^(-1) = -1, mas x^x não é real perto de -1
+        ("x^(1/x)", "-1"),
+        ("ln(x+1)/sqrt(x)", "-2"),   # (iπ)/(i√2) é real por coincidência
+        ("sqrt(x)", "-1"),
+        ("ln(x)", "-1"),
+    ],
+)
+def test_ponto_isolado_fora_do_dominio_nao_tem_limite(funcao, ponto):
+    r = _resolver(funcao, ponto)
+    assert not r.resolvido and r.valor is None
+    assert (r.esquerda, r.direita) == (None, None)
+    tentativa = next(p for p in r.passos if p.titulo == "Tentativa de substituição direta")
+    assert "domínio" in tentativa.explicacao or "não está definida" in tentativa.explicacao
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto, esperado",
+    [("sqrt(x)", "4", 2), ("ln(x)", "e", 1), ("x^x", "2", 4), ("sqrt(x)", "0", 0),
+     ("x^(1/3)", "8", 2), ("(x^2+1)/(x-3)", "1", -1), ("sen(x)+e^x", "0", 1)],
+)
+def test_substituicao_direta_continua_valendo_dentro_do_dominio(funcao, ponto, esperado):
+    r = _resolver(funcao, ponto)
+    assert r.resolvido and r.valor == esperado
+    assert [p.titulo for p in r.passos][-1] == "Substituição direta"
