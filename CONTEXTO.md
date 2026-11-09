@@ -99,22 +99,25 @@ calculadora-limites/
 Confira sempre com `git log --oneline --graph --all`, `git status` e `pytest`.
 
 Repositório: `git@github.com:MayzaBernardi/calculadora-limites.git` (SSH já
-autenticado). Raiz local: `/root/calculadoraLimites`.
+autenticado).
 
 Situação das branches no GitHub:
 
-- `main`: base do projeto, Etapa 1 e agentes do Claude Code (PRs #1 a #4).
-- `feature/etapa-2-zero-sobre-zero`: Etapa 2 concluída, um commit por técnica:
-  `650f08e` identificação de formas indeterminadas, `21fa078` fatoração,
-  `1e930f0` racionalização pelo conjugado e, por último, limites fundamentais
-  (ver `git log` para o hash). Ainda falta abrir o PR e mesclar.
+- `main`: base do projeto, Etapa 1 e Etapa 2 já mescladas, e agentes do Claude
+  Code (PRs #1 a #5). A Etapa 2 entrou um commit por técnica: `650f08e`
+  identificação de formas indeterminadas, `21fa078` fatoração, `1e930f0`
+  racionalização pelo conjugado e `973988b` limites fundamentais, mesclados
+  via PR #5 (`89e3e31`).
+- `feature/etapa-2-zero-sobre-zero`: já mesclada na `main`; só falta apagar o
+  remoto quando quiserem.
 
 Não presuma: rode `git fetch` e confira `git log --oneline --graph --all`.
 
 Ambiente: `backend/.venv` já existe e é ignorado pelo git. Se faltar, rode
 `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` dentro de
 `backend/` (no Ubuntu pode ser preciso `apt install python3.12-venv`). Testes:
-`cd backend && .venv/bin/pytest -q` (hoje: 215 passando, em cerca de 15 s; alguns testes esperam o timeout de 3 s).
+`cd backend && .venv/bin/pytest -q` (hoje: 215 passando, em alguns segundos;
+alguns testes esperam o timeout de 3 s).
 
 **Código em `backend/app/motor/` (fim da Etapa 2):**
 
@@ -225,9 +228,8 @@ a entrada, se sobrar tempo.
 
 ## 9. Próximo passo
 
-Etapa 2 concluída. Rode `git fetch`, confirme o estado (`git status`,
-`git log --oneline --graph --all`, `pytest`) e, depois que o PR da Etapa 2 for
-mesclado, crie `feature/etapa-3-laterais-k-sobre-zero` (a partir da `main`
-atualizada ou da branch da Etapa 2). Etapa 3: limites laterais, k/0 com
-análise de sinal e domínio de um lado só, usando `limite_seguro` com a
-direção e passando o `lado` a `conferir_com_sympy`.
+Etapa 2 mesclada na `main` (PR #5). Etapa 3 em andamento na branch
+`feature/etapa-3-laterais-k-sobre-zero` (criada a partir da `main`
+atualizada): limites laterais, k/0 com análise de sinal e domínio de um lado
+só, usando `limite_seguro` com a direção e passando o `lado` a
+`conferir_com_sympy`.
