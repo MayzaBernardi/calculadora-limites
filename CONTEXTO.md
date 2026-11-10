@@ -103,22 +103,21 @@ autenticado).
 
 Situação das branches no GitHub:
 
-- `main`: base do projeto, Etapa 1 e Etapa 2 já mescladas, e agentes do Claude
-  Code (PRs #1 a #5). A Etapa 2 entrou um commit por técnica: `650f08e`
+- `main`: base do projeto, Etapas 1, 2 e 3 já mescladas, e agentes do Claude
+  Code (PRs #1 a #7). A Etapa 2 entrou um commit por técnica: `650f08e`
   identificação de formas indeterminadas, `21fa078` fatoração, `1e930f0`
   racionalização pelo conjugado e `973988b` limites fundamentais, mesclados
-  via PR #5 (`89e3e31`).
-- `feature/etapa-2-zero-sobre-zero`: já mesclada na `main`; só falta apagar o
-  remoto quando quiserem.
-- `feature/etapa-3-laterais-k-sobre-zero`: Etapa 3 concluída (confira o hash
-  com `git log`). Falta abrir o PR e mesclar.
+  via PR #5 (`89e3e31`). A Etapa 3 (`942d774`, limites laterais, k/0 e
+  domínio de um lado só) foi mesclada via PR #7 (`7e420f4`).
+- `feature/etapa-2-zero-sobre-zero` e `feature/etapa-3-laterais-k-sobre-zero`:
+  já mescladas na `main`; só falta apagar os remotos quando quiserem.
 
 Não presuma: rode `git fetch` e confira `git log --oneline --graph --all`.
 
 Ambiente: `backend/.venv` já existe e é ignorado pelo git. Se faltar, rode
 `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` dentro de
 `backend/` (no Ubuntu pode ser preciso `apt install python3.12-venv`). Testes:
-`cd backend && .venv/bin/pytest -q` (hoje: 311 passando, em cerca de 35 s;
+`cd backend && .venv/bin/pytest -q` (hoje: 311 passando, em cerca de 67 s;
 cada limite roda em processo filho e alguns testes esperam o timeout de 3 s).
 
 **Código em `backend/app/motor/` (fim da Etapa 3):**
@@ -250,7 +249,6 @@ a entrada, se sobrar tempo.
 
 ## 9. Próximo passo
 
-Etapa 3 concluída na branch `feature/etapa-3-laterais-k-sobre-zero` (falta o
-PR e o merge). Depois, criar `feature/etapa-4-limites-no-infinito` a partir
-da `main` atualizada: termo dominante de polinômios, divisão pela maior
-potência em ∞/∞ e casos como `sen(x)/x` e `1/x` em ±∞.
+Etapa 3 mesclada na `main` (PR #7). Em andamento: `feature/etapa-4-limites-no-infinito`,
+criada a partir da `main` atualizada: termo dominante de polinômios, divisão
+pela maior potência em ∞/∞ e casos como `sen(x)/x` e `1/x` em ±∞.
