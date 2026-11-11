@@ -1043,3 +1043,125 @@ def test_substituicao_direta_continua_valendo_dentro_do_dominio(funcao, ponto, e
     r = _resolver(funcao, ponto)
     assert r.resolvido and r.valor == esperado
     assert [p.titulo for p in r.passos][-1] == "Substituição direta"
+
+
+# ======================= Etapa 4: limites no infinito =======================
+
+from app.motor.tecnicas import termo_dominante  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto, esperado",
+    [
+        ("3x^3-5x+1", "infinito", oo),      # grau ímpar, coef. positivo
+        ("3x^3-5x+1", "-infinito", -oo),    # grau ímpar: inverte em -oo
+        ("-2x^4+x", "infinito", -oo),       # grau par, coef. negativo
+        ("-2x^4+x", "-infinito", -oo),      # grau par: mesmo sinal nos dois lados
+        ("x^2-x^3", "infinito", -oo),       # termo dominante é -x^3
+        ("x^2-x^3", "-infinito", oo),
+        ("x^2", "infinito", oo),
+        ("x^2", "-infinito", oo),
+        ("-x^2", "infinito", -oo),
+        ("-x^2", "-infinito", -oo),
+        ("x", "infinito", oo),              # caso mais simples (sanity check)
+        ("x", "-infinito", -oo),
+        ("-x", "infinito", -oo),
+        ("-x", "-infinito", oo),
+        ("5", "infinito", 5),               # constante: caso trivial
+        ("5", "-infinito", 5),
+        ("x^2+3x-7", "infinito", oo),
+        ("x^5-100x^4", "infinito", oo),
+        ("x^5-100x^4", "-infinito", -oo),
+        ("x^50-3x^49+1", "infinito", oo),     # grau alto, par
+        ("x^50-3x^49+1", "-infinito", oo),
+        ("(1/3)*x^3", "infinito", oo),        # coeficiente fracionário
+        ("(1/3)*x^3", "-infinito", -oo),
+        ("sqrt(2)*x^2", "infinito", oo),      # coeficiente irracional
+        ("sqrt(2)*x^2", "-infinito", oo),
+        ("-sqrt(3)*x^5", "infinito", -oo),    # coeficiente irracional negativo
+        ("-sqrt(3)*x^5", "-infinito", oo),
+        ("x^3-x^3+x^2", "infinito", oo),      # cancelamento: grau real é 2, não 3
+        ("x^3-x^3+x^2", "-infinito", oo),
+    ],
+)
+def test_termo_dominante_resolve(funcao, ponto, esperado):
+    r = _resolver(funcao, ponto)
+    assert r.resolvido and r.existe and r.valor == esperado
+    assert sp.limit(ler_funcao(funcao), x, ler_ponto(ponto)) == esperado
+    titulos = [p.titulo for p in r.passos]
+    assert titulos[-1] == "Resultado"
+    assert any(t in ("Termo de maior grau domina", "Função constante") for t in titulos)
+    assert all(p.titulo and p.explicacao and p.latex for p in r.passos)
+
+
+def test_termo_dominante_passo_constante():
+    r = _resolver("5", "infinito")
+    titulos = [p.titulo for p in r.passos]
+    assert titulos == ["Limite a calcular", "Função constante", "Resultado"]
+
+
+def test_termo_dominante_passo_grau_maior_que_zero():
+    r = _resolver("3x^3-5x+1", "infinito")
+    titulos = [p.titulo for p in r.passos]
+    assert titulos == ["Limite a calcular", "Termo de maior grau domina", "Resultado"]
+    passo = r.passos[1]
+    assert "3" in passo.explicacao and "x^{3}" in passo.latex
+    assert "+\\infty" in passo.latex or r"\infty" in passo.latex
+
+
+@pytest.mark.parametrize("funcao", ["x^7", "(1/3)*x^3", "sqrt(2)*x^2", "|x|^4"])
+def test_termo_dominante_passo_sem_repeticao_quando_e_um_termo_so(funcao):
+    # Quando o polinômio já é só o termo de maior grau, não deve repetir a
+    # mesma expressão nos dois lados de "=" nem falar de "termos de grau
+    # menor" (não há nenhum).
+    r = _resolver(funcao, "infinito")
+    passo = r.passos[1]
+    assert passo.titulo == "Termo de maior grau domina"
+    assert passo.latex.count("=") == 1
+    assert "grau menor" not in passo.explicacao
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto",
+    [
+        ("x^2+1", "2"),                  # ponto finito: a técnica é só para o infinito
+        ("(x^2-4)/(x-2)", "infinito"),   # função racional, não polinômio puro
+        ("1/x", "-infinito"),            # função racional
+        ("sen(x)", "infinito"),          # não é polinômio
+        ("x^(1/2)", "infinito"),         # raiz: não é polinômio
+    ],
+)
+def test_termo_dominante_nao_se_aplica(funcao, ponto):
+    assert termo_dominante(ler_funcao(funcao), ler_ponto(ponto)) is None
+
+
+def test_termo_dominante_nao_se_aplica_mantem_fluxo_antigo():
+    # continuam "ainda não tratadas" (racionais), sem a técnica desta etapa
+    r = _resolver("(x^2-4)/(x-2)", "infinito")
+    assert not r.resolvido and r.valor is None
+    r = _resolver("1/x", "infinito")
+    assert not r.resolvido and r.valor is None
+
+
+def test_termo_dominante_divergencia_nao_e_escondida(monkeypatch):
+    from app.motor import resolvedor
+    monkeypatch.setattr(resolvedor, "conferir_com_sympy", lambda *a, **k: False)
+    r = _resolver("x^3", "infinito")
+    assert not r.resolvido and r.validado is False
+    assert r.passos[-1].titulo == "Conferência não coincidiu"
+
+
+def test_termo_dominante_polinomio_grande_nao_e_confirmado():
+    # Polinômio grande o suficiente para passar de TAMANHO_MAXIMO_CONFERENCIA
+    # (sp.count_ops): conferir_com_sympy devolve None, e a técnica não afirma
+    # o valor, mesmo que ele esteja matematicamente correto.
+    from app.motor.resolvedor import TAMANHO_MAXIMO_CONFERENCIA, resolver
+
+    expr = sp.expand(sum(x**i for i in range(1, 160)))
+    assert sp.count_ops(expr) > TAMANHO_MAXIMO_CONFERENCIA
+
+    r = resolver(expr, sp.oo)
+    assert not r.resolvido and r.valor is None and r.validado is None
+    titulos = [p.titulo for p in r.passos]
+    assert "Termo de maior grau domina" in titulos
+    assert titulos[-1] == "Não conseguimos concluir"
