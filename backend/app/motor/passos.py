@@ -372,6 +372,57 @@ def passo_produto_de_limites(expressao: sp.Expr, ponto: sp.Expr, f) -> Passo:
     )
 
 
+def passo_termo_dominante(expressao: sp.Expr, ponto: sp.Expr, d) -> Passo:
+    """d: TermoDominante (ver tecnicas.py)."""
+    a = texto_ponto(ponto)
+    if d.grau == 0:
+        return Passo(
+            titulo="Função constante",
+            explicacao=(
+                "Esta expressão não depende de x: é uma função constante. "
+                "Não importa para onde x tende, o valor não muda, então o "
+                f"limite é o próprio valor: {_valor_texto(d.valor)}."
+            ),
+            latex=f"{limite_tex(expressao, ponto)} = {tex(d.valor)}",
+        )
+    paridade = "par" if d.grau % 2 == 0 else "ímpar"
+    sinal_coef = "positivo" if d.coeficiente_lider.is_positive else "negativo"
+    if d.termo == d.polinomio:
+        # Não há termos de grau menor: a expressão já é só esse termo, então
+        # repetir "lim termo = lim termo" seria uma afirmação vazia.
+        explicacao = (
+            f"Esta expressão já é só um termo, {_texto_expr(d.termo)}: não há "
+            "outros termos com os quais compará-lo. Quando x tende "
+            f"a {a}, o que decide o resultado é o grau e o sinal do "
+            f"coeficiente. Aqui o grau é {d.grau} ({paridade}) e o "
+            f"coeficiente é {sinal_coef} ({_texto_expr(d.coeficiente_lider)}); "
+            f"combinando isso com x tendendo a {a}, o termo tende a "
+            f"{_valor_texto(d.valor)}."
+        )
+        latex = f"{limite_tex(expressao, ponto)} = {tex(d.valor)}"
+    else:
+        explicacao = (
+            f"Quando x tende a {a}, o termo de maior grau do polinômio, "
+            f"{_texto_expr(d.termo)}, domina o comportamento da função: os "
+            "termos de grau menor crescem muito mais devagar e ficam "
+            "desprezíveis em comparação com ele. Por isso o limite do "
+            "polinômio é igual ao limite do seu termo de maior grau. Aqui o "
+            f"grau é {d.grau} ({paridade}) e o coeficiente líder é "
+            f"{sinal_coef} ({_texto_expr(d.coeficiente_lider)}); combinando "
+            f"isso com x tendendo a {a}, esse termo tende a "
+            f"{_valor_texto(d.valor)}."
+        )
+        latex = (
+            f"{limite_tex(expressao, ponto)} = "
+            rf"\lim_{{x \to {tex(ponto)}}} {tex(d.termo)} = {tex(d.valor)}"
+        )
+    return Passo(
+        titulo="Termo de maior grau domina",
+        explicacao=explicacao,
+        latex=latex,
+    )
+
+
 def passo_tecnica_sem_conclusao(motivo: str | bool) -> Passo:
     """motivo: "divergiu" (ou True), "nao_confirmado" ou "sem_conclusao"."""
     if motivo is True:

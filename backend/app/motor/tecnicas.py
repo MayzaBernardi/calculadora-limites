@@ -169,6 +169,39 @@ def racionalizar(expressao: sp.Expr, ponto: sp.Expr) -> Racionalizacao | None:
 
 
 @dataclass
+class TermoDominante:
+    polinomio: sp.Expr          # polinômio original, expandido
+    grau: int                   # grau do termo que domina (0: polinômio constante)
+    coeficiente_lider: sp.Expr  # coeficiente desse termo
+    termo: sp.Expr              # o termo de maior grau (coeficiente_lider · x**grau)
+    valor: sp.Expr              # oo, -oo, ou o próprio valor (caso constante)
+
+
+def termo_dominante(expressao: sp.Expr, ponto: sp.Expr) -> TermoDominante | None:
+    """Polinômio puro em x com x -> +oo ou x -> -oo: o termo de maior grau
+    "domina" o comportamento (os de grau menor ficam desprezíveis), então o
+    limite do polinômio é o limite desse termo. O sinal do resultado vem do
+    coeficiente líder, da paridade do grau e do sentido do infinito: se x ->
+    +oo, x**grau é sempre positivo; se x -> -oo, x**grau é positivo quando o
+    grau é par e negativo quando é ímpar. Polinômio constante (sem x depois de
+    expandir) é um caso trivial, sem termo que domine: o valor não depende de
+    x. Devolve None se a técnica não se aplica."""
+    if ponto not in (sp.oo, -sp.oo) or not expressao.is_polynomial(x):
+        return None
+    polinomio = sp.expand(expressao)
+    if not polinomio.has(x):
+        return TermoDominante(polinomio, 0, polinomio, polinomio, polinomio)
+    poly = sp.Poly(polinomio, x)
+    grau = poly.degree()
+    coeficiente = poly.LC()
+    termo = coeficiente * x**grau
+    sinal_coeficiente = 1 if coeficiente.is_positive else -1
+    sinal_xn = 1 if ponto == sp.oo or grau % 2 == 0 else -1
+    valor = sp.oo if sinal_coeficiente * sinal_xn > 0 else -sp.oo
+    return TermoDominante(polinomio, grau, coeficiente, termo, valor)
+
+
+@dataclass
 class Bloco:
     lado: str                   # "numerador" ou "denominador"
     nome: str                   # nome curto para a explicação

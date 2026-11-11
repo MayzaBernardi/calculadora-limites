@@ -10,7 +10,7 @@ from app.motor.laterais import analisar_sinais, calcular_laterais, concluir
 from app.motor.passos import Passo
 from app.motor.seguro import limite_seguro
 from app.motor.tecnicas import (
-    aplicar_limites_fundamentais, fatorar_e_cancelar, racionalizar,
+    aplicar_limites_fundamentais, fatorar_e_cancelar, racionalizar, termo_dominante,
 )
 
 PROFUNDIDADE_MAXIMA = 5
@@ -206,6 +206,27 @@ def _resolver(expressao: sp.Expr, ponto: sp.Expr, profundidade: int) -> Resultad
             lista.append(passos.passo_substituicao_direta(expressao, ponto, valor))
             return Resultado(resolvido=True, existe=True, valor=valor, passos=lista)
         lista.append(passos.passo_substituicao_sem_resultado(expressao, ponto, motivo))
+
+    if not ponto.is_finite:
+        # Polinômio puro: o termo de maior grau decide, sem depender de
+        # "forma" (que classificaria x**3 - x como "oo-oo" por engano, já
+        # que o termo dominante sempre resolve um polinômio nesse caso).
+        dominante = termo_dominante(expressao, ponto)
+        if dominante is not None:
+            tecnica = [passos.passo_termo_dominante(expressao, ponto, dominante)]
+            validado = conferir_com_sympy(expressao, ponto, dominante.valor)
+            if validado:
+                lista_final = lista + tecnica
+                lista_final.append(passos.passo_resultado(expressao, ponto, dominante.valor))
+                return Resultado(
+                    resolvido=True, existe=True, valor=dominante.valor,
+                    passos=lista_final, validado=True,
+                )
+            motivo_falha = "divergiu" if validado is False else "nao_confirmado"
+            return Resultado(
+                resolvido=False, validado=validado,
+                passos=lista + tecnica + [passos.passo_tecnica_sem_conclusao(motivo_falha)],
+            )
 
     forma = identificar_forma(expressao, ponto)
     if forma is not None:
