@@ -202,6 +202,77 @@ def termo_dominante(expressao: sp.Expr, ponto: sp.Expr) -> TermoDominante | None
 
 
 @dataclass
+class DivisaoMaiorPotencia:
+    numerador: sp.Expr              # numerador original (polinômio), expandido
+    denominador: sp.Expr            # denominador original (polinômio), expandido
+    grau_numerador: int
+    grau_denominador: int
+    coeficiente_numerador: sp.Expr  # coeficiente líder do numerador
+    coeficiente_denominador: sp.Expr  # coeficiente líder do denominador
+    numerador_dividido: sp.Expr     # numerador após dividir por x**grau_denominador
+    denominador_dividido: sp.Expr   # denominador após a mesma divisão
+    caso: str                       # "menor", "igual" ou "maior" (grau do num. vs do den.)
+    valor: sp.Expr                  # 0, razão dos coeficientes líderes, ou ±oo
+
+
+def divisao_maior_potencia(
+    expressao: sp.Expr, ponto: sp.Expr
+) -> DivisaoMaiorPotencia | None:
+    """Função racional (polinômio sobre polinômio, os dois dependendo de x) com
+    x -> +oo ou -oo: dividimos numerador e denominador pela maior potência de
+    x que aparece no denominador. Os termos da forma c/x^k (k > 0) tendem a 0,
+    então só sobra o que não depende de x (ou, se o grau do numerador for
+    maior, um termo que ainda cresce sem limite). Três casos: grau do
+    numerador menor que o do denominador (limite 0), igual (razão dos
+    coeficientes líderes) ou maior (±oo, com o mesmo raciocínio de sinal do
+    termo_dominante: sinal do coeficiente combinado com a paridade do grau
+    restante e o sentido do infinito). Devolve None se a técnica não se
+    aplica (por exemplo, se não é uma fração racional em x dos dois lados,
+    como em k/x, que fica para outra técnica)."""
+    if ponto not in (sp.oo, -sp.oo):
+        return None
+    numerador, denominador = sp.fraction(expressao)
+    if denominador == 1 and expressao.is_Add:
+        numerador, denominador = sp.fraction(sp.together(expressao))
+    if denominador == 1 or denominador.is_number:
+        return None
+    if not (numerador.is_polynomial(x) and denominador.is_polynomial(x)):
+        return None
+    if max(sp.degree(numerador, x), sp.degree(denominador, x)) > GRAU_MAXIMO:
+        return None
+    numerador = sp.expand(numerador)
+    denominador = sp.expand(denominador)
+    if not numerador.has(x) or not denominador.has(x):
+        # k/polinômio ou polinômio/k: não é ∞/∞, fica para outra técnica
+        # (a de função limitada sobre infinito).
+        return None
+    poly_n, poly_d = sp.Poly(numerador, x), sp.Poly(denominador, x)
+    grau_n, grau_d = poly_n.degree(), poly_d.degree()
+    coeficiente_n, coeficiente_d = poly_n.LC(), poly_d.LC()
+
+    potencia = x**grau_d
+    numerador_dividido = sp.expand(numerador / potencia)
+    denominador_dividido = sp.expand(denominador / potencia)
+
+    if grau_n < grau_d:
+        caso, valor = "menor", sp.Integer(0)
+    elif grau_n == grau_d:
+        caso, valor = "igual", coeficiente_n / coeficiente_d
+    else:
+        caso = "maior"
+        grau_restante = grau_n - grau_d
+        razao = coeficiente_n / coeficiente_d
+        sinal_coeficiente = 1 if razao.is_positive else -1
+        sinal_xn = 1 if ponto == sp.oo or grau_restante % 2 == 0 else -1
+        valor = sp.oo if sinal_coeficiente * sinal_xn > 0 else -sp.oo
+
+    return DivisaoMaiorPotencia(
+        numerador, denominador, grau_n, grau_d, coeficiente_n, coeficiente_d,
+        numerador_dividido, denominador_dividido, caso, valor,
+    )
+
+
+@dataclass
 class Bloco:
     lado: str                   # "numerador" ou "denominador"
     nome: str                   # nome curto para a explicação

@@ -423,6 +423,81 @@ def passo_termo_dominante(expressao: sp.Expr, ponto: sp.Expr, d) -> Passo:
     )
 
 
+def passo_divisao_maior_potencia(expressao: sp.Expr, ponto: sp.Expr, d) -> Passo:
+    """d: DivisaoMaiorPotencia (ver tecnicas.py)."""
+    potencia = x**d.grau_denominador
+    explicacao = (
+        "A forma é ∞/∞: tanto o numerador quanto o denominador crescem sem "
+        "limite, então a substituição direta não decide o resultado. A "
+        "técnica padrão é dividir os dois pela maior potência de x que "
+        f"aparece no denominador, {_texto_expr(potencia)}, e simplificar "
+        "cada termo; isso não muda o valor da fração, pois é o mesmo que "
+        "multiplicar por 1 (1 dividido por ele mesmo)."
+    )
+    latex = (
+        f"{limite_tex(expressao, ponto)} = "
+        rf"\lim_{{x \to {tex(ponto)}}} "
+        rf"\frac{{{_com_parenteses(d.numerador)} \;/\; {tex(potencia)}}}"
+        rf"{{{_com_parenteses(d.denominador)} \;/\; {tex(potencia)}}}"
+        rf" = \lim_{{x \to {tex(ponto)}}} "
+        rf"\frac{{{tex(d.numerador_dividido)}}}{{{tex(d.denominador_dividido)}}}"
+    )
+    return Passo(titulo="Divisão pela maior potência", explicacao=explicacao, latex=latex)
+
+
+def passo_conclusao_divisao_maior_potencia(
+    expressao: sp.Expr, ponto: sp.Expr, d
+) -> Passo:
+    """d: DivisaoMaiorPotencia (ver tecnicas.py). Explica, termo a termo, por
+    que cada parcela c/x^k (k > 0) desaparece e o que sobra decide o valor."""
+    a = texto_ponto(ponto)
+    frac = rf"\frac{{{tex(d.numerador_dividido)}}}{{{tex(d.denominador_dividido)}}}"
+    if d.caso == "menor":
+        explicacao = (
+            f"Quando x tende a {a}, todo termo da forma c/x^k (com k > 0) tende "
+            "a 0. Assim, o numerador tende a 0, e o denominador tende ao seu "
+            f"termo constante, {_texto_expr(d.coeficiente_denominador)}, que é "
+            "diferente de 0. Zero dividido por um número diferente de zero é 0."
+        )
+        latex = rf"{frac} \;\longrightarrow\; \frac{{0}}{{{tex(d.coeficiente_denominador)}}} = 0"
+    elif d.caso == "igual":
+        explicacao = (
+            f"Quando x tende a {a}, todo termo da forma c/x^k (com k > 0) tende "
+            "a 0, e sobra só o termo constante de cada lado: o numerador tende "
+            f"a {_texto_expr(d.coeficiente_numerador)}, e o denominador tende a "
+            f"{_texto_expr(d.coeficiente_denominador)}. O limite é a razão entre "
+            "os coeficientes líderes do numerador e do denominador."
+        )
+        latex = (
+            rf"{frac} \;\longrightarrow\; "
+            rf"\frac{{{tex(d.coeficiente_numerador)}}}{{{tex(d.coeficiente_denominador)}}}"
+            rf" = {tex(d.valor)}"
+        )
+    else:
+        grau_restante = d.grau_numerador - d.grau_denominador
+        paridade = "par" if grau_restante % 2 == 0 else "ímpar"
+        razao = d.coeficiente_numerador / d.coeficiente_denominador
+        sinal_razao = "positiva" if razao.is_positive else "negativa"
+        termo_que_sobra = d.coeficiente_numerador * x**grau_restante
+        explicacao = (
+            f"Quando x tende a {a}, os termos da forma c/x^k (com k > 0) tendem "
+            f"a 0, mas o numerador ainda tem o termo {_texto_expr(termo_que_sobra)}, "
+            "que não desaparece: continua crescendo sem limite, porque o grau "
+            f"que restou ({grau_restante}) é maior que 0. O denominador tende a "
+            f"{_texto_expr(d.coeficiente_denominador)} (um número fixo, diferente "
+            "de 0). Dividir algo que cresce sem limite por um número fixo ainda "
+            "cresce sem limite; o sinal do resultado vem da razão entre os "
+            f"coeficientes líderes, que é {sinal_razao} ({_texto_expr(razao)}), "
+            f"combinada com o grau que restou ser {paridade} e x tender a {a}."
+        )
+        latex = rf"{frac} \;\longrightarrow\; {tex(d.valor)}"
+    return Passo(
+        titulo="Limite termo a termo",
+        explicacao=explicacao,
+        latex=latex,
+    )
+
+
 def passo_tecnica_sem_conclusao(motivo: str | bool) -> Passo:
     """motivo: "divergiu" (ou True), "nao_confirmado" ou "sem_conclusao"."""
     if motivo is True:

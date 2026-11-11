@@ -123,10 +123,10 @@ def test_substituicao_direta(funcao, ponto, esperado):
 @pytest.mark.parametrize(
     "funcao, ponto",
     [
-        ("(x^2-4)/(x-2)", "infinito"),  # ainda não tratado (etapa 4)
+        ("sen(x)/x", "infinito"),  # função limitada sobre infinito, ainda não tratado
         ("sqrt(x)", "-1"),        # fora do domínio dos dois lados
         ("ln(x)", "-1"),          # fora do domínio dos dois lados
-        ("1/x", "infinito"),      # ainda não tratado (etapa 4)
+        ("1/x", "infinito"),      # idem: k/polinômio, ainda não tratado
     ],
 )
 def test_substituicao_nao_resolve(funcao, ponto):
@@ -306,7 +306,12 @@ def test_fatoracao_nao_resolve(funcao, ponto):
     r = _resolver(funcao, ponto)
     assert "Fatoração" not in [p.titulo for p in r.passos]
     if ponto == "infinito":
-        assert not r.resolvido and r.valor is None
+        # fatorar_e_cancelar não atua em ponto infinito; outra técnica desta
+        # etapa (divisão pela maior potência) pode concluir no lugar dela.
+        if r.resolvido:
+            assert r.valor == sp.limit(ler_funcao(funcao), x, ler_ponto(ponto))
+        else:
+            assert r.valor is None
     else:
         _confere_com_sympy(r, funcao, ponto)  # quem conclui é a análise lateral
 
@@ -1135,10 +1140,17 @@ def test_termo_dominante_nao_se_aplica(funcao, ponto):
     assert termo_dominante(ler_funcao(funcao), ler_ponto(ponto)) is None
 
 
-def test_termo_dominante_nao_se_aplica_mantem_fluxo_antigo():
-    # continuam "ainda não tratadas" (racionais), sem a técnica desta etapa
+def test_termo_dominante_nao_se_aplica_mas_racional_e_resolvida_por_outra_tecnica():
+    # (x^2-4)/(x-2) não é polinômio puro, então termo_dominante não se aplica;
+    # mas é uma função racional, resolvida por divisao_maior_potencia (abaixo).
+    assert termo_dominante(ler_funcao("(x^2-4)/(x-2)"), ler_ponto("infinito")) is None
     r = _resolver("(x^2-4)/(x-2)", "infinito")
-    assert not r.resolvido and r.valor is None
+    assert r.resolvido and r.existe and r.valor == oo
+
+
+def test_termo_dominante_nao_se_aplica_mantem_fluxo_antigo_para_limitada_sobre_infinito():
+    # k/polinômio (1/x) não é ∞/∞ (o numerador não cresce): fica "ainda não
+    # tratada", para a técnica de função limitada sobre infinito (outra etapa).
     r = _resolver("1/x", "infinito")
     assert not r.resolvido and r.valor is None
 
@@ -1165,3 +1177,81 @@ def test_termo_dominante_polinomio_grande_nao_e_confirmado():
     titulos = [p.titulo for p in r.passos]
     assert "Termo de maior grau domina" in titulos
     assert titulos[-1] == "Não conseguimos concluir"
+
+
+# ================ Etapa 4: divisão pela maior potência (∞/∞) ================
+
+from app.motor.tecnicas import divisao_maior_potencia  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto, esperado",
+    [
+        # grau do numerador menor que o do denominador: limite 0
+        ("(x+1)/(x^2+1)", "infinito", 0),
+        ("(x+1)/(x^2+1)", "-infinito", 0),
+        ("x/(x^2+1)", "infinito", 0),          # numerador cresce, mas mais devagar
+        ("(x^3-1)/(x^5+1)", "-infinito", 0),
+        # graus iguais: razão dos coeficientes líderes
+        ("(2x+1)/(3x-5)", "infinito", sp.Rational(2, 3)),
+        ("(2x+1)/(3x-5)", "-infinito", sp.Rational(2, 3)),
+        ("(3x^2+2x)/(5x^2-1)", "infinito", sp.Rational(3, 5)),
+        ("(-x+4)/(2x+1)", "infinito", sp.Rational(-1, 2)),
+        ("(x^2-9)/(x^2+9)", "-infinito", 1),
+        # grau do numerador maior: ±∞, com sinal a conferir
+        ("(x^2-4)/(x-2)", "infinito", oo),
+        ("(x^2-1)/(x+1)", "-infinito", -oo),
+        ("(5-x^2)/(2x+3)", "infinito", -oo),
+        ("(1-x^3)/(x^2+4)", "-infinito", oo),
+        ("(x^4-1)/(x^2+1)", "-infinito", oo),
+        ("x^3/(x+1)", "infinito", oo),
+        ("x^3/(x+1)", "-infinito", oo),       # grau restante 2 (par): mesmo sinal nos dois lados
+    ],
+)
+def test_divisao_maior_potencia_resolve(funcao, ponto, esperado):
+    r = _resolver(funcao, ponto)
+    assert r.resolvido and r.existe and r.valor == esperado
+    assert sp.limit(ler_funcao(funcao), x, ler_ponto(ponto)) == esperado
+    titulos = [p.titulo for p in r.passos]
+    assert titulos[-1] == "Resultado"
+    assert "Divisão pela maior potência" in titulos
+    assert "Limite termo a termo" in titulos
+    assert all(p.titulo and p.explicacao and p.latex for p in r.passos)
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto",
+    [
+        ("(x+1)/(x^2+1)", "2"),       # ponto finito: a técnica é só para o infinito
+        ("x^2+1", "infinito"),        # polinômio puro: já resolvido por termo_dominante
+        ("1/x", "infinito"),          # k/polinômio: numerador não depende de x
+        ("1/(x^2-3)", "infinito"),    # idem: numerador constante, não ∞/∞
+        ("(x+1)/5", "infinito"),      # polinômio/k: denominador não depende de x
+        ("sen(x)/x", "infinito"),     # numerador não é polinômio
+        ("x/sen(x)", "infinito"),     # denominador não é polinômio
+    ],
+)
+def test_divisao_maior_potencia_nao_se_aplica(funcao, ponto):
+    assert divisao_maior_potencia(ler_funcao(funcao), ler_ponto(ponto)) is None
+
+
+def test_divisao_maior_potencia_passos_mostram_cada_caso():
+    r = _resolver("(x+1)/(x^2+1)", "infinito")
+    passo = next(p for p in r.passos if p.titulo == "Limite termo a termo")
+    assert "tende a 0" in passo.explicacao
+
+    r = _resolver("(2x+1)/(3x-5)", "infinito")
+    passo = next(p for p in r.passos if p.titulo == "Limite termo a termo")
+    assert "razão" in passo.explicacao
+
+    r = _resolver("(x^2-4)/(x-2)", "infinito")
+    passo = next(p for p in r.passos if p.titulo == "Limite termo a termo")
+    assert "cresce sem limite" in passo.explicacao
+
+
+def test_divisao_maior_potencia_divergencia_nao_e_escondida(monkeypatch):
+    from app.motor import resolvedor
+    monkeypatch.setattr(resolvedor, "conferir_com_sympy", lambda *a, **k: False)
+    r = _resolver("(2x+1)/(3x-5)", "infinito")
+    assert not r.resolvido and r.validado is False
+    assert r.passos[-1].titulo == "Conferência não coincidiu"
