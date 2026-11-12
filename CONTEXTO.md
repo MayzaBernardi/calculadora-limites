@@ -87,7 +87,7 @@ calculadora-limites/
 1. Leitura da entrada e substituição direta — **FEITA**
 2. Indeterminação 0/0 (fatoração, racionalização, limites fundamentais) — **FEITA**
 3. Limites laterais, k/0 e domínio de um lado só — **FEITA**
-4. Limites no infinito
+4. Limites no infinito — **FEITA**
 5. L'Hôpital, ∞−∞, 0·∞ e indeterminações com potência
 6. API (rota `/limite`)
 7. Página (formulário e passo a passo)
@@ -104,23 +104,30 @@ autenticado).
 Situação das branches no GitHub:
 
 - `main`: base do projeto, Etapas 1, 2 e 3 já mescladas, e agentes do Claude
-  Code (PRs #1 a #7). A Etapa 2 entrou um commit por técnica: `650f08e`
+  Code (PRs #1 a #9). A Etapa 2 entrou um commit por técnica: `650f08e`
   identificação de formas indeterminadas, `21fa078` fatoração, `1e930f0`
   racionalização pelo conjugado e `973988b` limites fundamentais, mesclados
   via PR #5 (`89e3e31`). A Etapa 3 (`942d774`, limites laterais, k/0 e
-  domínio de um lado só) foi mesclada via PR #7 (`7e420f4`).
+  domínio de um lado só) foi mesclada via PR #7 (`7e420f4`). Da Etapa 4, só o
+  primeiro commit (termo dominante de polinômios, `277c346`) foi mesclado via
+  PR #9 (`55413b4`); os outros dois ainda estão só na branch (veja abaixo).
 - `feature/etapa-2-zero-sobre-zero` e `feature/etapa-3-laterais-k-sobre-zero`:
   já mescladas na `main`; só falta apagar os remotos quando quiserem.
+- `feature/etapa-4-limites-no-infinito`: **Etapa 4 completa**, ainda não
+  mesclada (nem pushada) além do primeiro commit. Tem mais dois commits
+  locais: `eeeff73` (divisão pela maior potência, ∞/∞) e `027c519` (função
+  limitada sobre infinito, teorema do confronto). Falta `git push` e abrir o
+  PR.
 
 Não presuma: rode `git fetch` e confira `git log --oneline --graph --all`.
 
 Ambiente: `backend/.venv` já existe e é ignorado pelo git. Se faltar, rode
 `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` dentro de
 `backend/` (no Ubuntu pode ser preciso `apt install python3.12-venv`). Testes:
-`cd backend && .venv/bin/pytest -q` (hoje: 311 passando, em cerca de 67 s;
+`cd backend && .venv/bin/pytest -q` (hoje: 411 passando, em cerca de 68 s;
 cada limite roda em processo filho e alguns testes esperam o timeout de 3 s).
 
-**Código em `backend/app/motor/` (fim da Etapa 3):**
+**Código em `backend/app/motor/` (fim da Etapa 4):**
 
 - `entrada.py` (sem mudanças desde a Etapa 1)
   - Define `x` (símbolo real) e `ErroEntrada` (a mensagem vai para o usuário).
@@ -156,6 +163,25 @@ cada limite roda em processo filho e alguns testes esperam o timeout de 3 s).
   - `aplicar_limites_fundamentais` (sen u/u, tg u/u, (e^u-1)/u, ln(1+u)/u,
     (1-cos u)/u², (cos u-1)/u², sen²u/u², (a^u-1)/u, com u -> 0 por todos os
     lados em que a função existe).
+  - `termo_dominante` (Etapa 4): polinômio puro (`is_polynomial(x)`) com
+    x → ±∞; o termo de maior grau decide o sinal do infinito (coeficiente
+    líder, paridade do grau e sentido do infinito).
+  - `divisao_maior_potencia` (Etapa 4): função racional (numerador e
+    denominador polinomiais, os dois dependendo de x) com x → ±∞, forma
+    ∞/∞; divide os dois pela maior potência do denominador. Três casos:
+    grau do numerador menor (limite 0), igual (razão dos coeficientes
+    líderes) ou maior (±∞, mesmo raciocínio de sinal do `termo_dominante`,
+    reimplementado à parte). Exclui de propósito `k/polinômio` e
+    `polinômio/k` (numerador ou denominador sem x) — não é ∞/∞ de verdade.
+  - `limitada_sobre_infinito` (Etapa 4): `g(x)/h(x)` com x → ±∞, `h(x)` →
+    ±∞ e `g(x)` limitada perto do infinito (reconhece, via
+    `_intervalo_limitado`: números, sen/cos de qualquer argumento, soma de
+    partes limitadas, produto de constante de sinal conhecido por parte
+    limitada; não reconhece produto de duas partes que dependem de x, como
+    sen(x)·cos(x)). Conclui por confronto em valor absoluto
+    (`|g/h| <= C/|h| -> 0`) que o limite é sempre 0. Não trata o caso em
+    que é o denominador que oscila (`x/sen(x)`, sem limite, fica para a
+    Etapa 5 ou sem conclusão).
 - `passos.py`
   - `Passo(titulo, explicacao, latex)`; helpers `tex`, `tex_ordenado`,
     `texto_ponto`, `limite_tex` (soma entra entre parênteses) e
@@ -186,18 +212,23 @@ cada limite roda em processo filho e alguns testes esperam o timeout de 3 s).
 Testes em `backend/testes/test_motor.py`; `pytest.ini` já configura
 `pythonpath = .`.
 
-Limitações conhecidas ao fim da Etapa 3: pontos infinitos (Etapa 4) ainda não
-são resolvidos. Na análise lateral o valor de cada lado vem do `sp.limit`
-(via `limite_seguro`) e os passos explicam a comparação e o sinal; a
-derivação passo a passo de 0·∞, 0^0 e afins (`x*ln(x)`, `x^x` em 0) fica para
-a Etapa 5. Funções que oscilam (`sen(1/x)` em 0) terminam sem conclusão.
-A Etapa 3 foi feita sem os agentes (indisponíveis na sessão); a revisão foi
-uma varredura de 1057 limites contra o `sp.limit`, com 0 divergências.
-Limites fundamentais não tratam: deslocamento por π (`sen(pi*x)/(x-1)` em 1),
-`x*sen(1/x)`, `(sen x - x)/x^3` (precisa de L'Hôpital ou Taylor) e potências
-de sen diferentes de 2. O teste de domínio (`definida_no_lado`) é numérico,
-com amostra a 1e-6 do ponto, e roda em processo com timeout de 3 s; funções
-que oscilam muito perto do ponto podem ser classificadas errado ou ficar sem
+Limitações conhecidas ao fim da Etapa 4: a derivação passo a passo de 0·∞,
+0^0, ∞−∞ e afins (`x*ln(x)`, `x^x` em 0, L'Hôpital em geral) fica para a
+Etapa 5. Funções que oscilam sem um numerador reconhecido como limitado
+(`sen(1/x)` em 0, `x/sen(x)` em ±∞, `sen(x)*cos(x)/x` em ±∞) terminam sem
+conclusão — de propósito, nunca com valor errado. A Etapa 3 foi feita sem os
+agentes (indisponíveis na sessão); a revisão foi uma varredura de 1057
+limites contra o `sp.limit`, com 0 divergências. A Etapa 4 usou os agentes
+(`motor-limites` e `revisor-matematico`); a revisão de cada técnica incluiu
+varreduras de centenas de casos aleatórios contra `sp.limit`, 0 divergências
+encontradas (uma delas achou um bug real de LaTeX — parênteses faltando na
+técnica de divisão pela maior potência quando numerador/denominador têm mais
+de um termo —, já corrigido antes do commit). Limites fundamentais (Etapa 2)
+não tratam: deslocamento por π (`sen(pi*x)/(x-1)` em 1), `x*sen(1/x)`,
+`(sen x - x)/x^3` (precisa de L'Hôpital ou Taylor) e potências de sen
+diferentes de 2. O teste de domínio (`definida_no_lado`) é numérico, com
+amostra a 1e-6 do ponto, e roda em processo com timeout de 3 s; funções que
+oscilam muito perto do ponto podem ser classificadas errado ou ficar sem
 conclusão (de propósito, nunca com valor errado).
 
 ## 6. Como trabalhar (pedido explícito da dona do projeto)
@@ -249,6 +280,10 @@ a entrada, se sobrar tempo.
 
 ## 9. Próximo passo
 
-Etapa 3 mesclada na `main` (PR #7). Em andamento: `feature/etapa-4-limites-no-infinito`,
-criada a partir da `main` atualizada: termo dominante de polinômios, divisão
-pela maior potência em ∞/∞ e casos como `sen(x)/x` e `1/x` em ±∞.
+Etapa 4 completa na branch `feature/etapa-4-limites-no-infinito` (3 commits:
+termo dominante, divisão pela maior potência, função limitada sobre
+infinito), mas falta `git push` e abrir o PR — pergunte antes de fazer
+qualquer um dos dois. Depois de mesclada, a próxima é a Etapa 5: L'Hôpital,
+∞−∞ (denominador comum ou conjugado), 0·∞ (reescrever como quociente) e as
+indeterminações com potência (1^∞, 0^0, ∞^0, via `lim f^g = e^(lim g·ln f)`),
+criando `feature/etapa-5-lhopital-potencias` a partir da `main` atualizada.
