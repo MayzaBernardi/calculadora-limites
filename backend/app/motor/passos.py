@@ -158,6 +158,24 @@ def passo_forma_indeterminada(
     return Passo(titulo=titulo, explicacao=explicacao, latex=latex)
 
 
+def passo_sem_indeterminacao(expressao: sp.Expr, ponto: sp.Expr, valor: sp.Expr) -> Passo:
+    """x -> ±∞ e a expressão não é nenhuma forma indeterminada: não há
+    infinitos ou zeros competindo entre si, então o comportamento de cada
+    parte já decide o valor direto, sem precisar de nenhuma técnica."""
+    a = texto_ponto(ponto)
+    return Passo(
+        titulo="Sem indeterminação",
+        explicacao=(
+            f"Quando x tende a {a}, esta expressão não é nenhuma forma "
+            "indeterminada: não há infinitos ou zeros concorrendo entre si "
+            "(como em ∞/∞ ou 0 · ∞). O comportamento de cada parte já decide "
+            f"o valor diretamente, sem precisar de nenhuma técnica: o limite é "
+            f"{_valor_texto(valor)}."
+        ),
+        latex=f"{limite_tex(expressao, ponto)} = {tex(valor)}",
+    )
+
+
 def passo_substituicao_sem_resultado(
     expressao: sp.Expr, ponto: sp.Expr, motivo: str
 ) -> Passo:
@@ -370,6 +388,33 @@ def passo_produto_de_limites(expressao: sp.Expr, ponto: sp.Expr, f) -> Passo:
             rf"\lim_{{x \to {tex(ponto)}}} {resto}"
         ),
     )
+
+
+def passo_lhopital(expressao: sp.Expr, ponto: sp.Expr, forma: str, d) -> Passo:
+    """d: LHopital (ver tecnicas.py). forma: "0/0" ou "oo/oo"."""
+    forma_tex = r"\frac{0}{0}" if forma == "0/0" else r"\frac{\infty}{\infty}"
+    forma_texto = "0/0" if forma == "0/0" else "∞/∞"
+    explicacao = (
+        f"A forma é {forma_texto}, então vale a Regra de L'Hôpital: nesse "
+        "caso, o limite do quociente é igual ao limite do quociente das "
+        "derivadas do numerador e do denominador, quando esse segundo "
+        "limite existe. Derivamos cada um separadamente (derivar a fração "
+        "inteira pediria a regra do quociente e só deixaria a expressão "
+        f"mais complicada). A derivada do numerador, {_texto_expr(d.numerador)}, "
+        f"é {_texto_expr(d.derivada_numerador)}; a do denominador, "
+        f"{_texto_expr(d.denominador)}, é {_texto_expr(d.derivada_denominador)}."
+    )
+    nova_tex = (
+        rf"\lim_{{x \to {tex(ponto)}}} "
+        rf"\frac{{{tex(d.derivada_numerador)}}}{{{tex(d.derivada_denominador)}}}"
+    )
+    latex = (
+        rf"\begin{{gathered}} {limite_tex(expressao, ponto)} \;\left({forma_tex}\right)"
+        rf" \\ f(x) = {tex(d.numerador)}, \quad f'(x) = {tex(d.derivada_numerador)}"
+        rf" \\ g(x) = {tex(d.denominador)}, \quad g'(x) = {tex(d.derivada_denominador)}"
+        rf" \\ {limite_tex(expressao, ponto)} = {nova_tex} \end{{gathered}}"
+    )
+    return Passo(titulo="Regra de L'Hôpital", explicacao=explicacao, latex=latex)
 
 
 def passo_termo_dominante(expressao: sp.Expr, ponto: sp.Expr, d) -> Passo:

@@ -464,7 +464,9 @@ def test_racionalizacao_denominador_diz_denominador():
         ("sqrt(x^2)/x", "0"),                    # laterais divergentes
         ("|x|/x", "0"),
         ("sen(x)/x^2", "0"),                     # sem raiz
-        ("(sqrt(x+1)-1)/x", "infinito"),         # ponto infinito
+        ("(sqrt(x+1)-1)/x", "infinito"),         # ponto infinito: racionalizar não
+                                                  # se aplica (é só p/ ponto finito),
+                                                  # mas L'Hôpital resolve (Etapa 5)
         ("(sqrt(x+1)+1)/x", "0"),                # k/0, não 0/0
         ("(x^(1/3)-1)/(x-1)", "1"),              # raiz cúbica
     ],
@@ -472,10 +474,7 @@ def test_racionalizacao_denominador_diz_denominador():
 def test_racionalizacao_nao_se_aplica(funcao, ponto):
     r = _resolver(funcao, ponto)
     assert "Conjugado" not in [p.titulo for p in r.passos]
-    if ponto == "infinito":
-        assert not r.resolvido and r.valor is None
-    else:
-        _confere_com_sympy(r, funcao, ponto)
+    _confere_com_sympy(r, funcao, ponto)
 
 
 def test_racionalizar_none_sem_erro():
@@ -1365,3 +1364,263 @@ def test_limitada_sobre_infinito_nao_atrapalha_divisao_maior_potencia():
     assert r.resolvido and r.valor == 0
     assert "Divisão pela maior potência" in titulos
     assert "Numerador limitado, denominador infinito" not in titulos
+
+
+# ========================= Etapa 5: Regra de L'Hôpital =======================
+
+from app.motor.tecnicas import aplicar_lhopital  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto, esperado",
+    [
+        # 0/0 em ponto finito: nenhuma das técnicas anteriores (fatoração,
+        # racionalização, limites fundamentais) se aplica diretamente.
+        ("(sen(x)-x)/x^3", "0", sp.Rational(-1, 6)),
+        ("ln(x)/(x-1)", "1", 1),
+        ("(e^x-1-x)/x^2", "0", sp.Rational(1, 2)),
+        # ∞/∞ em x -> +infinito: nem polinômio puro, nem função racional,
+        # nem numerador limitado (as técnicas da Etapa 4 não se aplicam).
+        ("x/e^x", "infinito", 0),
+        ("x^2/e^x", "infinito", 0),
+    ],
+)
+def test_lhopital_resolve(funcao, ponto, esperado):
+    r = _resolver(funcao, ponto)
+    assert r.resolvido and r.existe and r.valor == esperado
+    assert sp.limit(ler_funcao(funcao), x, ler_ponto(ponto)) == esperado
+    assert r.passos[-1].titulo == "Resultado"
+    assert all(p.titulo and p.explicacao and p.latex for p in r.passos)
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto",
+    [
+        ("(sen(x)-x)/x^3", "0"),
+        ("x/e^x", "infinito"),
+        ("x^2/e^x", "infinito"),
+        ("(e^x-1-x)/x^2", "0"),
+    ],
+)
+def test_lhopital_e_realmente_usada(funcao, ponto):
+    # Confirma que, para estes casos, o motor de fato passou pela Regra de
+    # L'Hôpital (fatoração, racionalização e limites fundamentais não bastam).
+    # ln(x)/(x-1) fica de fora deste teste: o limite fundamental ln(1+u)/u já
+    # resolve, lendo ln(x) como ln(1 + (x-1)); não chega a precisar de L'Hôpital.
+    r = _resolver(funcao, ponto)
+    titulos = [p.titulo for p in r.passos]
+    assert "Regra de L'Hôpital" in titulos
+
+
+@pytest.mark.parametrize(
+    "expressao",
+    [
+        x + 1,         # soma: sem fração explícita (denominador 1)
+        sp.sin(x),     # idem
+        sp.Integer(5), # constante: idem
+    ],
+)
+def test_lhopital_nao_se_aplica_sem_fracao_explicita(expressao):
+    assert aplicar_lhopital(expressao, sp.Integer(0)) is None
+
+
+def test_lhopital_nao_se_aplica_fora_de_0_sobre_0_e_oo_sobre_oo():
+    # k/0 (1/x em 0): continua resolvido pelos laterais, sem usar L'Hôpital
+    # (a técnica nem chega a ser chamada pelo resolvedor nesta forma).
+    r = _resolver("1/x", "0")
+    titulos = [p.titulo for p in r.passos]
+    assert "Regra de L'Hôpital" not in titulos
+    assert not r.existe and r.valor is None
+
+
+def test_lhopital_nao_forca_resultado_quando_derivada_oscila_sem_limite():
+    # (x + sen(x))/x em +infinito: o limite de verdade é 1, mas a derivada,
+    # (1 + cos(x))/1, oscila sem limite. A hipótese da Regra de L'Hôpital
+    # falha aqui, então o motor não deve "forçar" o valor certo por acaso:
+    # tem que terminar sem concluir.
+    expr = (x + sp.sin(x)) / x
+    assert sp.limit(expr, x, sp.oo) == 1
+    r = resolver(expr, sp.oo)
+    assert not r.resolvido and r.valor is None
+
+
+def test_lhopital_passo_mostra_forma_e_derivadas():
+    r = _resolver("x/e^x", "infinito")
+    passo = next(p for p in r.passos if p.titulo == "Regra de L'Hôpital")
+    assert "L'Hôpital" in passo.explicacao
+    assert "∞/∞" in passo.explicacao
+    assert "derivada" in passo.explicacao
+    assert "f'(x)" in passo.latex and "g'(x)" in passo.latex
+    assert r"\frac{\infty}{\infty}" in passo.latex
+
+
+def test_lhopital_divergencia_nao_e_escondida(monkeypatch):
+    from app.motor import resolvedor
+    # Diferente das técnicas de reta (termo_dominante, divisao_maior_potencia,
+    # limitada_sobre_infinito), L'Hôpital sempre recorre a _continuar, que
+    # resolve a nova expressão chamando resolver() de novo; mockar
+    # conferir_com_sympy para sempre devolver False faria a recursão falhar
+    # antes mesmo do primeiro nível (virando "Não conseguimos concluir", não
+    # "Conferência não coincidiu"). Por isso só forçamos a divergência na
+    # conferência do limite original, deixando a recursão interna real.
+    original = resolvedor.conferir_com_sympy
+    alvo = ler_funcao("x/e^x")
+
+    def falso(expressao, ponto, valor, lado="+-"):
+        if expressao == alvo:
+            return False
+        return original(expressao, ponto, valor, lado)
+
+    monkeypatch.setattr(resolvedor, "conferir_com_sympy", falso)
+    r = _resolver("x/e^x", "infinito")
+    assert not r.resolvido and r.validado is False
+    assert r.passos[-1].titulo == "Conferência não coincidiu"
+
+
+# ============== Etapa 5: ponto infinito sem forma indeterminada ==============
+# e^x/x (e primos) são o exemplo clássico de L'Hôpital para ∞/∞, mas depois de
+# derivar sobra só e^x (sem fração): não é 0/0, ∞/∞ nem nenhuma outra forma
+# indeterminada, então o motor precisa concluir pelo comportamento direto.
+
+@pytest.mark.parametrize(
+    "funcao, esperado",
+    [
+        ("e^x/x", sp.oo),
+        ("e^x/x^2", sp.oo),
+    ],
+)
+def test_sem_indeterminacao_apos_lhopital(funcao, esperado):
+    r = _resolver(funcao, "infinito")
+    assert r.resolvido and r.existe and r.valor == esperado
+    assert sp.limit(ler_funcao(funcao), x, ler_ponto("infinito")) == esperado
+    titulos = [p.titulo for p in r.passos]
+    assert "Regra de L'Hôpital" in titulos
+    assert "Sem indeterminação" in titulos
+    assert r.passos[-1].titulo == "Resultado"
+    assert all(p.titulo and p.explicacao and p.latex for p in r.passos)
+
+
+def test_sem_indeterminacao_apos_lhopital_caso_mais_dificil():
+    # e^x/ln(x): depois de L'Hôpital, e^x/(1/x) = x*e^x, que também não é
+    # indeterminado em +infinito. Documenta o comportamento atual: se o motor
+    # não conseguir concluir por falta de alguma técnica intermediária, tudo
+    # bem (não deve nunca devolver um valor errado), mas o caso é bom para
+    # regressão.
+    r = _resolver("e^x/ln(x)", "infinito")
+    esperado = sp.limit(ler_funcao("e^x/ln(x)"), x, ler_ponto("infinito"))
+    assert esperado == sp.oo
+    if r.resolvido:
+        assert r.existe and r.valor == esperado
+
+
+@pytest.mark.parametrize(
+    "funcao, esperado",
+    [
+        ("e^x", sp.oo),       # função isolada, sem fração: testa a técnica nova
+        ("ln(x)", sp.oo),     # idem, sem depender de L'Hôpital
+        ("raiz(x)", sp.oo),   # idem
+    ],
+)
+def test_sem_indeterminacao_funcao_isolada(funcao, esperado):
+    r = _resolver(funcao, "infinito")
+    assert sp.limit(ler_funcao(funcao), x, ler_ponto("infinito")) == esperado
+    assert r.resolvido and r.existe and r.valor == esperado
+    titulos = [p.titulo for p in r.passos]
+    assert "Sem indeterminação" in titulos
+    assert r.passos[-1].titulo == "Resultado"
+    assert all(p.titulo and p.explicacao and p.latex for p in r.passos)
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto",
+    [
+        ("x^2/(x+1)", "infinito"),       # divisao_maior_potencia, não afetada
+        ("x^3-x", "infinito"),           # termo_dominante, não afetada
+        ("sen(x)/x", "infinito"),        # limitada_sobre_infinito, não afetada
+        ("x/e^x", "infinito"),           # L'Hôpital, 0/0 e oo/oo existentes
+        ("x^2/e^x", "infinito"),
+    ],
+)
+def test_sem_indeterminacao_nao_interfere_em_tecnicas_existentes(funcao, ponto):
+    # A nova verificação só deve disparar quando identificar_forma devolve
+    # None; nestes casos a forma é reconhecida (ou outra técnica de ponto
+    # infinito resolve antes de chegar lá), então "Sem indeterminação" não
+    # deve aparecer nos passos.
+    r = _resolver(funcao, ponto)
+    titulos = [p.titulo for p in r.passos]
+    assert "Sem indeterminação" not in titulos
+
+
+def test_sem_indeterminacao_nao_forca_resultado_quando_oscila_sem_limite():
+    # x/sen(x) em +infinito: não tem limite (nem AccumBounds, sp.limit devolve
+    # um Limit não avaliado). forma também é None aqui, então cai no mesmo
+    # caminho novo; mas limite_da_parte precisa recusar esse valor sujo e não
+    # inventar uma conclusão.
+    expr = x / sp.sin(x)
+    assert identificar_forma(expr, sp.oo) is None
+    r = resolver(expr, sp.oo)
+    assert not r.resolvido and r.valor is None
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto",
+    [
+        ("raiz(x)+x^2", "-infinito"),
+        ("ln(x)+x^2", "-infinito"),
+        ("raiz(x)-x^3", "-infinito"),
+        ("ln(-x)+x", "infinito"),
+        ("x^(1/3)+x^2", "-infinito"),
+        ("ln(x)*x^2", "-infinito"),
+        ("raiz(x)/x^3", "-infinito"),
+        ("x^(3/2)+x^3", "-infinito"),
+    ],
+)
+def test_sem_indeterminacao_nao_ignora_dominio(funcao, ponto):
+    # Nenhum desses é real na direção pedida (raiz e ln exigem x >= 0, x^(1/3)
+    # e x^(3/2) com base negativa também não são reais nos reais). O sp.limit
+    # da expressão inteira até devolve um valor limpo (o termo que daria
+    # complexo é dominado na expansão assintótica), mas isso não é um limite
+    # de verdade: a função não existe perto do infinito pedido, então o motor
+    # não deve afirmar nada.
+    r = _resolver(funcao, ponto)
+    assert not r.resolvido and r.valor is None
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto",
+    [
+        # raiz(sen(x/10)): o argumento oscila entre -1 e 1 para sempre, então
+        # fica negativo (fora do domínio real da raiz) repetidamente, não
+        # importa quão longe x esteja. Nenhuma amostra numérica fixa (nem o
+        # sp.limit da expressão inteira, que dá +oo) percebe isso; só o
+        # raciocínio de domínio simbólico rejeita corretamente.
+        ("x+raiz(sen(x/10))", "infinito"),
+        ("x^2+raiz(sen(x/7))", "infinito"),
+        ("-x+raiz(sen(x/3))", "-infinito"),
+        ("x^3+raiz(sen(x/3))", "-infinito"),
+    ],
+)
+def test_sem_indeterminacao_rejeita_raiz_de_oscilacao_sem_cota_positiva(funcao, ponto):
+    r = _resolver(funcao, ponto)
+    assert not r.resolvido and r.valor is None
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto, esperado",
+    [
+        # ln(sen(x/7) + 2): o argumento também oscila (não tem limite), mas
+        # nunca sai do intervalo [1, 3] (sen entre -1 e 1, mais 2), então o
+        # domínio do log está sempre garantido, para todo x, mesmo sem um
+        # "a partir de um certo ponto". Não deve ser recusado à toa.
+        ("x+ln(sen(x/7)+2)", "infinito", sp.oo),
+        # Frequência diferente da anterior, e com raiz em vez de log, para
+        # documentar que a checagem simbólica (ao contrário da amostragem
+        # numérica que ela substitui) não depende da frequência escolhida.
+        ("x+raiz(cos(x/5)+2)", "infinito", sp.oo),
+        ("x^2+raiz(2-sen(x/4))", "-infinito", sp.oo),
+    ],
+)
+def test_sem_indeterminacao_aceita_oscilacao_com_cota_positiva(funcao, ponto, esperado):
+    r = _resolver(funcao, ponto)
+    assert r.resolvido and r.existe and r.valor == esperado
+    assert sp.limit(ler_funcao(funcao), x, ler_ponto(ponto)) == esperado
