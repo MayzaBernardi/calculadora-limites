@@ -103,21 +103,19 @@ autenticado).
 
 Situação das branches no GitHub:
 
-- `main`: base do projeto, Etapas 1, 2 e 3 já mescladas, e agentes do Claude
-  Code (PRs #1 a #9). A Etapa 2 entrou um commit por técnica: `650f08e`
+- `main`: base do projeto, Etapas 1 a 4 já mescladas, e agentes do Claude
+  Code (PRs #1 a #10). A Etapa 2 entrou um commit por técnica: `650f08e`
   identificação de formas indeterminadas, `21fa078` fatoração, `1e930f0`
   racionalização pelo conjugado e `973988b` limites fundamentais, mesclados
   via PR #5 (`89e3e31`). A Etapa 3 (`942d774`, limites laterais, k/0 e
-  domínio de um lado só) foi mesclada via PR #7 (`7e420f4`). Da Etapa 4, só o
-  primeiro commit (termo dominante de polinômios, `277c346`) foi mesclado via
-  PR #9 (`55413b4`); os outros dois ainda estão só na branch (veja abaixo).
-- `feature/etapa-2-zero-sobre-zero` e `feature/etapa-3-laterais-k-sobre-zero`:
-  já mescladas na `main`; só falta apagar os remotos quando quiserem.
-- `feature/etapa-4-limites-no-infinito`: **Etapa 4 completa**, ainda não
-  mesclada (nem pushada) além do primeiro commit. Tem mais dois commits
-  locais: `eeeff73` (divisão pela maior potência, ∞/∞) e `027c519` (função
-  limitada sobre infinito, teorema do confronto). Falta `git push` e abrir o
-  PR.
+  domínio de um lado só) foi mesclada via PR #7 (`7e420f4`). A Etapa 4 entrou
+  em dois PRs: o primeiro commit (termo dominante de polinômios, `277c346`)
+  via PR #9 (`55413b4`); os outros dois (`eeeff73` divisão pela maior
+  potência e `027c519` função limitada sobre infinito) via PR #10 (`e416913`).
+  Etapa 4 completa e mesclada.
+- `feature/etapa-2-zero-sobre-zero`, `feature/etapa-3-laterais-k-sobre-zero` e
+  `feature/etapa-4-limites-no-infinito`: já mescladas na `main`; só falta
+  apagar os remotos quando quiserem.
 
 Não presuma: rode `git fetch` e confira `git log --oneline --graph --all`.
 
@@ -280,10 +278,8 @@ a entrada, se sobrar tempo.
 
 ## 9. Próximo passo
 
-Etapa 4 completa na branch `feature/etapa-4-limites-no-infinito` (3 commits:
-termo dominante, divisão pela maior potência, função limitada sobre
-infinito), mas falta `git push` e abrir o PR — pergunte antes de fazer
-qualquer um dos dois. Depois de mesclada, a próxima é a Etapa 5: L'Hôpital,
+Etapa 4 mesclada na `main` (PR #10). A próxima é a Etapa 5: L'Hôpital,
 ∞−∞ (denominador comum ou conjugado), 0·∞ (reescrever como quociente) e as
 indeterminações com potência (1^∞, 0^0, ∞^0, via `lim f^g = e^(lim g·ln f)`),
-criando `feature/etapa-5-lhopital-potencias` a partir da `main` atualizada.
+na branch `feature/etapa-5-lhopital-potencias`, criada a partir da `main`
+atualizada.
