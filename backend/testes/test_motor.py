@@ -123,10 +123,10 @@ def test_substituicao_direta(funcao, ponto, esperado):
 @pytest.mark.parametrize(
     "funcao, ponto",
     [
-        ("sen(x)/x", "infinito"),  # função limitada sobre infinito, ainda não tratado
+        ("x/sen(x)", "infinito"),  # denominador oscila: ainda não tratado
         ("sqrt(x)", "-1"),        # fora do domínio dos dois lados
         ("ln(x)", "-1"),          # fora do domínio dos dois lados
-        ("1/x", "infinito"),      # idem: k/polinômio, ainda não tratado
+        ("sen(x)", "infinito"),   # sem denominador: só oscila, ainda não tratado
     ],
 )
 def test_substituicao_nao_resolve(funcao, ponto):
@@ -651,7 +651,9 @@ def test_limites_fundamentais_nao_se_aplicam(funcao, ponto):
     titulos = [p.titulo for p in r.passos]
     assert "Limite fundamental" not in titulos
     if ponto == "infinito":
-        assert not r.resolvido and r.valor is None
+        # não é limite fundamental (u = x não tende a 0), mas é resolvido por
+        # outra técnica: sen(x)/x no infinito é função limitada sobre infinito.
+        assert r.resolvido and r.valor == 0
     else:
         _confere_com_sympy(r, funcao, ponto)
 
@@ -900,9 +902,9 @@ def test_tecnica_resolvida_tambem_informa_laterais():
 
 
 def test_ponto_infinito_nao_usa_laterais():
-    r = _resolver("1/x", "infinito")
+    r = _resolver("x/sen(x)", "infinito")
     assert not r.resolvido
-    assert calcular_laterais(ler_funcao("1/x"), oo) is None
+    assert calcular_laterais(ler_funcao("x/sen(x)"), oo) is None
     assert all(p.titulo != "Limites laterais" for p in r.passos)
 
 
@@ -1148,11 +1150,14 @@ def test_termo_dominante_nao_se_aplica_mas_racional_e_resolvida_por_outra_tecnic
     assert r.resolvido and r.existe and r.valor == oo
 
 
-def test_termo_dominante_nao_se_aplica_mantem_fluxo_antigo_para_limitada_sobre_infinito():
-    # k/polinômio (1/x) não é ∞/∞ (o numerador não cresce): fica "ainda não
-    # tratada", para a técnica de função limitada sobre infinito (outra etapa).
+def test_termo_dominante_nao_se_aplica_mas_e_resolvida_por_limitada_sobre_infinito():
+    # k/polinômio (1/x) não é ∞/∞ (o numerador não cresce): não é
+    # termo_dominante nem divisao_maior_potencia, mas é resolvida pela
+    # técnica de função limitada sobre infinito (1 é limitada, x -> oo).
+    assert termo_dominante(ler_funcao("1/x"), ler_ponto("infinito")) is None
+    assert divisao_maior_potencia(ler_funcao("1/x"), ler_ponto("infinito")) is None
     r = _resolver("1/x", "infinito")
-    assert not r.resolvido and r.valor is None
+    assert r.resolvido and r.existe and r.valor == 0
 
 
 def test_termo_dominante_divergencia_nao_e_escondida(monkeypatch):
@@ -1255,3 +1260,108 @@ def test_divisao_maior_potencia_divergencia_nao_e_escondida(monkeypatch):
     r = _resolver("(2x+1)/(3x-5)", "infinito")
     assert not r.resolvido and r.validado is False
     assert r.passos[-1].titulo == "Conferência não coincidiu"
+
+
+# ============== Etapa 4: função limitada sobre infinito (confronto) =========
+
+from app.motor.tecnicas import limitada_sobre_infinito  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto",
+    [
+        ("sen(x)/x", "infinito"),
+        ("sen(x)/x", "-infinito"),
+        ("cos(x)/x", "infinito"),
+        ("cos(x)/x", "-infinito"),
+        ("1/x", "infinito"),
+        ("1/x", "-infinito"),
+        ("1/x^2", "infinito"),
+        ("1/x^2", "-infinito"),
+        ("(2+sen(x))/x", "infinito"),      # numerador limitado entre 1 e 3
+        ("(2+sen(x))/x", "-infinito"),
+        ("1/(x^2-3)", "infinito"),         # numerador constante: caso particular
+        ("sen(x)/x^2", "-infinito"),
+        ("cos(x)/x^3", "-infinito"),
+        ("-sen(x)/x", "infinito"),         # constante negativa multiplicando
+        ("3*cos(x)/x^2", "infinito"),      # numerador limitado entre -3 e 3
+    ],
+)
+def test_limitada_sobre_infinito_resolve(funcao, ponto):
+    r = _resolver(funcao, ponto)
+    assert r.resolvido and r.existe and r.valor == 0
+    assert sp.limit(ler_funcao(funcao), x, ler_ponto(ponto)) == 0
+    titulos = [p.titulo for p in r.passos]
+    assert titulos[-1] == "Resultado"
+    assert "Numerador limitado, denominador infinito" in titulos
+    assert "Teorema do confronto" in titulos
+    assert all(p.titulo and p.explicacao and p.latex for p in r.passos)
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto",
+    [
+        ("sen(x)/sen(x)", "infinito"),    # simplifica para a constante 1, sem divisão relevante
+        ("x/sen(x)", "infinito"),         # quem oscila é o denominador, não o numerador
+        ("sen(x)", "infinito"),           # sem denominador: só oscila, sem limite
+        ("x*sen(x)", "infinito"),         # produto, não quociente: cresce oscilando
+        ("x*cos(x)", "-infinito"),
+        ("(x+1)/(x^2+1)", "infinito"),    # numerador não limitado (cresce com x)
+        ("x^2+1", "infinito"),            # polinômio puro, sem denominador que importe
+        ("sen(x)/x", "2"),                # ponto finito: a técnica é só para o infinito
+        ("sen(x)*cos(x)/x", "infinito"),  # produto de duas partes com x: não cobrimos
+    ],
+)
+def test_limitada_sobre_infinito_nao_se_aplica(funcao, ponto):
+    assert limitada_sobre_infinito(ler_funcao(funcao), ler_ponto(ponto)) is None
+
+
+def test_limitada_sobre_infinito_nao_e_usada_quando_outra_tecnica_resolve():
+    # x/sen(x) e sen(x) continuam sem solução (não é escopo desta etapa).
+    for funcao in ("x/sen(x)", "sen(x)", "x*sen(x)"):
+        r = _resolver(funcao, "infinito")
+        assert not r.resolvido and r.valor is None
+
+
+def test_limitada_sobre_infinito_bounds_mais_apertados_que_menos_um_e_um():
+    # (2+sen(x))/x: o numerador fica entre 1 e 3, não só entre -1 e 1.
+    r = _resolver("(2+sen(x))/x", "infinito")
+    passo = next(p for p in r.passos if p.titulo == "Numerador limitado, denominador infinito")
+    assert "1" in passo.explicacao and "3" in passo.explicacao
+    assert "1" in passo.latex and "3" in passo.latex
+
+
+def test_limitada_sobre_infinito_passo_numerador_constante():
+    r = _resolver("1/(x^2-3)", "infinito")
+    passo = next(p for p in r.passos if p.titulo == "Numerador limitado, denominador infinito")
+    assert "constante" in passo.explicacao
+
+
+def test_limitada_sobre_infinito_passo_oscilante():
+    r = _resolver("sen(x)/x", "infinito")
+    passo = next(p for p in r.passos if p.titulo == "Numerador limitado, denominador infinito")
+    assert "oscilando" in passo.explicacao
+
+
+def test_limitada_sobre_infinito_confronto_mostra_modulo():
+    r = _resolver("sen(x)/x", "infinito")
+    passo = next(p for p in r.passos if p.titulo == "Teorema do confronto")
+    assert r"\left|" in passo.latex and r"\to 0" in passo.latex
+
+
+def test_limitada_sobre_infinito_divergencia_nao_e_escondida(monkeypatch):
+    from app.motor import resolvedor
+    monkeypatch.setattr(resolvedor, "conferir_com_sympy", lambda *a, **k: False)
+    r = _resolver("sen(x)/x", "infinito")
+    assert not r.resolvido and r.validado is False
+    assert r.passos[-1].titulo == "Conferência não coincidiu"
+
+
+def test_limitada_sobre_infinito_nao_atrapalha_divisao_maior_potencia():
+    # (x+1)/(x^2+1) continua sendo resolvido por divisao_maior_potencia, e não
+    # por esta técnica (o numerador cresce, não é limitado).
+    r = _resolver("(x+1)/(x^2+1)", "infinito")
+    titulos = [p.titulo for p in r.passos]
+    assert r.resolvido and r.valor == 0
+    assert "Divisão pela maior potência" in titulos
+    assert "Numerador limitado, denominador infinito" not in titulos

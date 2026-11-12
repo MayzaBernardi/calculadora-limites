@@ -11,7 +11,7 @@ from app.motor.passos import Passo
 from app.motor.seguro import limite_seguro
 from app.motor.tecnicas import (
     aplicar_limites_fundamentais, divisao_maior_potencia, fatorar_e_cancelar,
-    racionalizar, termo_dominante,
+    limitada_sobre_infinito, racionalizar, termo_dominante,
 )
 
 PROFUNDIDADE_MAXIMA = 5
@@ -243,6 +243,29 @@ def _resolver(expressao: sp.Expr, ponto: sp.Expr, profundidade: int) -> Resultad
                 lista_final.append(passos.passo_resultado(expressao, ponto, divisao.valor))
                 return Resultado(
                     resolvido=True, existe=True, valor=divisao.valor,
+                    passos=lista_final, validado=True,
+                )
+            motivo_falha = "divergiu" if validado is False else "nao_confirmado"
+            return Resultado(
+                resolvido=False, validado=validado,
+                passos=lista + tecnica + [passos.passo_tecnica_sem_conclusao(motivo_falha)],
+            )
+
+        # Nem polinômio puro, nem função racional: pode ser um numerador
+        # limitado (sen, cos, constantes...) sobre algo que cresce sem
+        # limite, caso em que o teorema do confronto dá o limite 0.
+        limitada = limitada_sobre_infinito(expressao, ponto)
+        if limitada is not None:
+            tecnica = [
+                passos.passo_funcao_limitada(expressao, ponto, limitada),
+                passos.passo_confronto_limitada_sobre_infinito(expressao, ponto, limitada),
+            ]
+            validado = conferir_com_sympy(expressao, ponto, limitada.valor)
+            if validado:
+                lista_final = lista + tecnica
+                lista_final.append(passos.passo_resultado(expressao, ponto, limitada.valor))
+                return Resultado(
+                    resolvido=True, existe=True, valor=limitada.valor,
                     passos=lista_final, validado=True,
                 )
             motivo_falha = "divergiu" if validado is False else "nao_confirmado"

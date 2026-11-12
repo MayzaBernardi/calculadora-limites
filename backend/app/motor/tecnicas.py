@@ -5,6 +5,7 @@ import sympy as sp
 
 from app.motor.entrada import x
 from app.motor.formas import lados_definidos, limite_da_parte
+from app.motor.seguro import limite_seguro
 
 # Acima disso o factor do SymPy fica lento demais (grau 300 leva ~5 s; grau 100 leva menos de 1 s).
 GRAU_MAXIMO = 100
@@ -270,6 +271,84 @@ def divisao_maior_potencia(
         numerador, denominador, grau_n, grau_d, coeficiente_n, coeficiente_d,
         numerador_dividido, denominador_dividido, caso, valor,
     )
+
+
+def _intervalo_limitado(expressao: sp.Expr) -> tuple[sp.Expr, sp.Expr] | None:
+    """Se a expressão fica sempre entre dois números fixos (para todo x real),
+    devolve esse intervalo [mínimo, máximo]; senão, None. Reconhece: números
+    (intervalo degenerado, min = max), sen e cos de qualquer argumento
+    (sempre entre -1 e 1, mesmo que o argumento cresça sem limite), soma de
+    partes limitadas e produto de uma constante por uma parte limitada (o
+    sinal da constante decide qual extremo é o mínimo e qual é o máximo).
+    Não é exaustivo: não reconhece, por exemplo, produto de duas partes que
+    dependem de x (sen(x)·cos(x)) nem potências."""
+    if not expressao.has(x):
+        return expressao, expressao
+    if expressao.func in (sp.sin, sp.cos):
+        return sp.Integer(-1), sp.Integer(1)
+    if expressao.is_Add:
+        intervalos = [_intervalo_limitado(termo) for termo in expressao.args]
+        if any(i is None for i in intervalos):
+            return None
+        minimo = sp.Add(*(i[0] for i in intervalos))
+        maximo = sp.Add(*(i[1] for i in intervalos))
+        return minimo, maximo
+    if expressao.is_Mul:
+        partes_com_x = [f for f in expressao.args if f.has(x)]
+        partes_sem_x = [f for f in expressao.args if not f.has(x)]
+        if len(partes_com_x) != 1:
+            return None  # produto de duas partes com x: não cobrimos aqui
+        intervalo = _intervalo_limitado(partes_com_x[0])
+        if intervalo is None:
+            return None
+        constante = sp.Mul(*partes_sem_x)
+        if constante.is_negative:
+            return constante * intervalo[1], constante * intervalo[0]
+        if constante.is_positive or constante == 0:
+            return constante * intervalo[0], constante * intervalo[1]
+        return None  # sinal da constante desconhecido: não arriscamos
+    return None
+
+
+@dataclass
+class LimitadaSobreInfinito:
+    parte_limitada: sp.Expr          # g(x): fica entre dois números fixos
+    parte_infinita: sp.Expr          # h(x): tende a +oo ou -oo
+    minimo: sp.Expr                  # cota inferior conhecida de g(x)
+    maximo: sp.Expr                  # cota superior conhecida de g(x)
+    cota: sp.Expr                    # C = máximo de |mínimo| e |máximo|
+    valor_parte_infinita: sp.Expr    # oo ou -oo
+    valor: sp.Expr = sp.Integer(0)   # o limite do quociente é sempre 0
+
+
+def limitada_sobre_infinito(
+    expressao: sp.Expr, ponto: sp.Expr
+) -> LimitadaSobreInfinito | None:
+    """x -> +oo ou -oo, expressão da forma g(x)/h(x) em que h(x) tende a +oo
+    ou -oo e g(x) é limitada perto do infinito: fica sempre entre dois
+    números fixos, mesmo sem ter limite definido (como sen(x) e cos(x), que
+    oscilam entre -1 e 1, mas nunca "explodem"), ou é apenas uma constante
+    (caso particular de limitada). Pelo teorema do confronto,
+    |g(x)/h(x)| <= C/|h(x)|, e o lado direito tende a 0 porque |h(x)| tende a
+    +oo; logo g(x)/h(x) também tende a 0. Só reconhece g(x) limitada nos
+    casos cobertos por `_intervalo_limitado`; não cobre, por exemplo, sen(x) ·
+    cos(x) no numerador, nem o caso em que é o denominador que oscila (como
+    x/sen(x), que não tem limite e não deve ser tratado por esta técnica).
+    Devolve None se a técnica não se aplica."""
+    if ponto not in (sp.oo, -sp.oo):
+        return None
+    numerador, denominador = sp.fraction(expressao)
+    if denominador == 1 or denominador.is_number or not denominador.has(x):
+        return None
+    intervalo = _intervalo_limitado(numerador)
+    if intervalo is None:
+        return None
+    minimo, maximo = intervalo
+    valor_h = limite_seguro(denominador, ponto)
+    if valor_h not in (sp.oo, -sp.oo):
+        return None
+    cota = sp.Max(sp.Abs(minimo), sp.Abs(maximo))
+    return LimitadaSobreInfinito(numerador, denominador, minimo, maximo, cota, valor_h)
 
 
 @dataclass

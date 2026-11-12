@@ -498,6 +498,59 @@ def passo_conclusao_divisao_maior_potencia(
     )
 
 
+def passo_funcao_limitada(expressao: sp.Expr, ponto: sp.Expr, d) -> Passo:
+    """d: LimitadaSobreInfinito (ver tecnicas.py). Mostra por que o numerador
+    é limitado e que o denominador cresce sem limite."""
+    a = texto_ponto(ponto)
+    sinal = "+\\infty" if d.valor_parte_infinita == sp.oo else "-\\infty"
+    if d.parte_limitada.has(x):
+        motivo = (
+            f"{_texto_expr(d.parte_limitada)} nunca \"explode\": fica sempre "
+            f"entre {_valor_texto(d.minimo)} e {_valor_texto(d.maximo)}, mesmo "
+            "sem ter um limite definido quando x cresce (ele pode continuar "
+            "oscilando para sempre entre esses dois valores)."
+        )
+    else:
+        motivo = (
+            f"o numerador é a constante {_texto_expr(d.parte_limitada)}, que "
+            "não muda com x: é o caso mais simples de uma função limitada."
+        )
+    explicacao = (
+        f"O denominador, {_texto_expr(d.parte_infinita)}, cresce sem limite "
+        f"({texto_ponto(d.valor_parte_infinita)}) quando x tende a {a}. Já o "
+        f"numerador, {_texto_expr(d.parte_limitada)}, é limitado: {motivo}"
+    )
+    latex = (
+        rf"{tex(d.minimo)} \leq {tex(d.parte_limitada)} \leq {tex(d.maximo)}"
+        rf" \qquad {tex(d.parte_infinita)} \to {sinal}"
+    )
+    return Passo(titulo="Numerador limitado, denominador infinito", explicacao=explicacao, latex=latex)
+
+
+def passo_confronto_limitada_sobre_infinito(
+    expressao: sp.Expr, ponto: sp.Expr, d
+) -> Passo:
+    """d: LimitadaSobreInfinito (ver tecnicas.py). Conclui, pelo teorema do
+    confronto, que o quociente tende a 0."""
+    a = texto_ponto(ponto)
+    explicacao = (
+        "Uma quantidade que fica sempre entre dois números fixos, dividida "
+        "por algo que cresce sem limite em módulo, se aproxima de 0: é o "
+        f"teorema do confronto. Aqui, o módulo do numerador nunca passa de "
+        f"{_valor_texto(d.cota)}, então o módulo do quociente fica espremido "
+        f"entre 0 e {_valor_texto(d.cota)} dividido pelo módulo do "
+        f"denominador; como o denominador cresce sem limite quando x tende "
+        f"a {a}, esse limitante também tende a 0, e por isso o quociente "
+        "tende a 0."
+    )
+    latex = (
+        rf"\left| \frac{{{tex(d.parte_limitada)}}}{{{tex(d.parte_infinita)}}} \right| \leq "
+        rf"\frac{{{tex(d.cota)}}}{{\left| {tex(d.parte_infinita)} \right|}} \to 0"
+        rf" \quad \Longrightarrow \quad {limite_tex(expressao, ponto)} = 0"
+    )
+    return Passo(titulo="Teorema do confronto", explicacao=explicacao, latex=latex)
+
+
 def passo_tecnica_sem_conclusao(motivo: str | bool) -> Passo:
     """motivo: "divergiu" (ou True), "nao_confirmado" ou "sem_conclusao"."""
     if motivo is True:
