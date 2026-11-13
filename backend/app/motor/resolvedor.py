@@ -5,13 +5,14 @@ import sympy as sp
 
 from app.motor import passos
 from app.motor.entrada import x
-from app.motor.formas import identificar_forma, lados_definidos
+from app.motor.formas import identificar_forma, lados_definidos, limite_da_parte
 from app.motor.laterais import analisar_sinais, calcular_laterais, concluir
 from app.motor.passos import Passo
 from app.motor.seguro import limite_seguro
 from app.motor.tecnicas import (
-    aplicar_limites_fundamentais, divisao_maior_potencia, fatorar_e_cancelar,
-    limitada_sobre_infinito, racionalizar, termo_dominante,
+    aplicar_limites_fundamentais, aplicar_lhopital, divisao_maior_potencia,
+    fatorar_e_cancelar, intervalo_limitado, limitada_sobre_infinito,
+    racionalizar, termo_dominante,
 )
 
 PROFUNDIDADE_MAXIMA = 5
@@ -51,6 +52,60 @@ def _pode_sair_dos_reais(expressao: sp.Expr) -> bool:
         if parte.is_Function and not isinstance(parte, seguras):
             return True
     return False
+
+
+def _argumentos_restritos(expressao: sp.Expr) -> list[sp.Expr]:
+    """Subexpressões que dependem de x e restringem o domínio real do tipo de
+    função que o motor cobre: o argumento de um log (precisa ser > 0) e a
+    base de uma potência de expoente racional não inteiro (raiz quadrada,
+    cúbica etc.; o SymPy trata base negativa como não real nesses casos,
+    mesmo com x real). Qualquer outra operação (exponencial, seno, cosseno,
+    polinômio, piso...) já é real em toda a reta, então não entra aqui."""
+    argumentos = [log.args[0] for log in expressao.atoms(sp.log) if log.args[0].has(x)]
+    for potencia in expressao.atoms(sp.Pow):
+        base, expoente = potencia.base, potencia.exp
+        if expoente.is_Rational and not expoente.is_Integer and base.has(x):
+            argumentos.append(base)
+    return argumentos
+
+
+def _argumento_seguro_no_infinito(argumento: sp.Expr, ponto: sp.Expr) -> bool:
+    """O argumento restrito (de um log ou de uma potência fracionária) fica
+    garantidamente positivo perto do infinito pedido? Primeiro tenta o
+    limite do argumento: se tende a +oo, por definição ele fica eventualmente
+    maior que qualquer número (inclusive 0), logo eventualmente positivo; se
+    tende a um número finito estritamente positivo, por continuidade ele
+    fica positivo perto do infinito. Isso cobre casos como sen(x/7) + 2, cujo
+    limite não existe (oscila), mas que nunca é negativo: quando o limite não
+    decide (oscilação, None, 0, negativo ou -oo), tenta um intervalo
+    garantido (reaproveitando `intervalo_limitado`, de tecnicas.py): se o
+    argumento nunca sai de um intervalo cujo mínimo é estritamente positivo,
+    está seguro em qualquer x, mesmo sem ter limite."""
+    limite = limite_da_parte(argumento, ponto)
+    if limite == sp.oo:
+        return True
+    if limite is not None and limite.is_finite and limite.is_positive:
+        return True
+    intervalo = intervalo_limitado(argumento)
+    return intervalo is not None and intervalo[0].is_positive is True
+
+
+def _definida_perto_do_infinito(expressao: sp.Expr, ponto: sp.Expr) -> bool:
+    """Checagem simbólica (sem amostragem numérica) de que nenhuma parte da
+    expressão que restringe o domínio real (log, potência de expoente
+    racional não inteiro) pode cair fora do domínio perto do infinito
+    pedido. Usada antes de aceitar um valor "sem indeterminação": o sp.limit
+    da expressão inteira pode sair real "por coincidência" (a parte que daria
+    complexa é dominada/some na expansão assintótica), mesmo que a função não
+    seja real em nenhum ponto perto do infinito pedido — por exemplo
+    raiz(x)+x^2 em -infinito, ou raiz(sen(x/10)) em +infinito, cujo argumento
+    oscila para sempre e fica negativo (fora do domínio) repetidamente,
+    nunca "a partir de um certo ponto". Sem log nem potência fracionária, a
+    checagem passa de vez (nada restringe o domínio)."""
+    return all(
+        _argumento_seguro_no_infinito(arg, ponto)
+        for arg in _argumentos_restritos(expressao)
+    )
 
 
 def substituir(expressao: sp.Expr, ponto: sp.Expr) -> tuple[sp.Expr | None, str]:
@@ -277,44 +332,67 @@ def _resolver(expressao: sp.Expr, ponto: sp.Expr, profundidade: int) -> Resultad
     forma = identificar_forma(expressao, ponto)
     if forma is not None:
         lista.append(passos.passo_forma_indeterminada(expressao, ponto, forma))
+    elif not ponto.is_finite:
+        # x -> ±∞ e nenhuma forma indeterminada foi reconhecida: não há
+        # infinitos ou zeros "disputando" o resultado (por exemplo, e^x, ln x
+        # ou x^5 sozinhos, ou uma combinação que não bate em nenhum padrão de
+        # formas.py). O comportamento de cada parte já decide o valor direto.
+        valor = limite_da_parte(expressao, ponto)
+        if valor is not None and _definida_perto_do_infinito(expressao, ponto):
+            tecnica = [passos.passo_sem_indeterminacao(expressao, ponto, valor)]
+            lista_final = lista + tecnica + [passos.passo_resultado(expressao, ponto, valor)]
+            return Resultado(
+                resolvido=True, existe=True, valor=valor, passos=lista_final, validado=True,
+            )
 
-    if forma == "0/0" and profundidade < PROFUNDIDADE_MAXIMA:
-        fatoracao = fatorar_e_cancelar(expressao, ponto)
-        if fatoracao is not None:
-            tecnica = [
-                passos.passo_fatoracao(
-                    expressao, ponto, fatoracao.numerador, fatoracao.denominador,
-                    fatoracao.fator_comum),
-                passos.passo_cancelamento(
-                    fatoracao.fator_comum, fatoracao.simplificada,
-                    fatoracao.numerador, fatoracao.denominador, ponto),
-            ]
+    if forma in ("0/0", "oo/oo") and profundidade < PROFUNDIDADE_MAXIMA:
+        if forma == "0/0":
+            fatoracao = fatorar_e_cancelar(expressao, ponto)
+            if fatoracao is not None:
+                tecnica = [
+                    passos.passo_fatoracao(
+                        expressao, ponto, fatoracao.numerador, fatoracao.denominador,
+                        fatoracao.fator_comum),
+                    passos.passo_cancelamento(
+                        fatoracao.fator_comum, fatoracao.simplificada,
+                        fatoracao.numerador, fatoracao.denominador, ponto),
+                ]
+                falha = _continuar(
+                    expressao, ponto, fatoracao.simplificada, lista, tecnica, profundidade)
+                return _ou_laterais(falha, expressao, ponto, lista)
+
+            racionalizacao = racionalizar(expressao, ponto)
+            if racionalizacao is not None:
+                tecnica = [
+                    passos.passo_conjugado(racionalizacao),
+                    passos.passo_multiplicacao_conjugado(expressao, ponto, racionalizacao),
+                    passos.passo_simplificacao_racionalizacao(
+                        expressao, ponto, racionalizacao),
+                ]
+                falha = _continuar(
+                    expressao, ponto, racionalizacao.simplificada, lista, tecnica,
+                    profundidade)
+                return _ou_laterais(falha, expressao, ponto, lista)
+
+            fundamentais = aplicar_limites_fundamentais(expressao, ponto)
+            if fundamentais is not None:
+                tecnica = [passos.passo_limite_fundamental(b, ponto) for b in fundamentais.blocos]
+                tecnica.append(passos.passo_ajuste_fundamental(expressao, ponto, fundamentais))
+                tecnica.append(passos.passo_produto_de_limites(expressao, ponto, fundamentais))
+                falha = _continuar(
+                    expressao, ponto, fundamentais.resto, lista, tecnica, profundidade,
+                    multiplicador=fundamentais.fator)
+                return _ou_laterais(falha, expressao, ponto, lista)
+
+        # L'Hôpital: último recurso para 0/0 (as técnicas acima são mais
+        # diretas quando se aplicam); para ∞/∞, que elas não cobrem, é a
+        # primeira tentativa.
+        lhopital = aplicar_lhopital(expressao, ponto)
+        if lhopital is not None:
+            tecnica = [passos.passo_lhopital(expressao, ponto, forma, lhopital)]
             falha = _continuar(
-                expressao, ponto, fatoracao.simplificada, lista, tecnica, profundidade)
+                expressao, ponto, lhopital.nova, lista, tecnica, profundidade)
             return _ou_laterais(falha, expressao, ponto, lista)
 
-        racionalizacao = racionalizar(expressao, ponto)
-        if racionalizacao is not None:
-            tecnica = [
-                passos.passo_conjugado(racionalizacao),
-                passos.passo_multiplicacao_conjugado(expressao, ponto, racionalizacao),
-                passos.passo_simplificacao_racionalizacao(
-                    expressao, ponto, racionalizacao),
-            ]
-            falha = _continuar(
-                expressao, ponto, racionalizacao.simplificada, lista, tecnica,
-                profundidade)
-            return _ou_laterais(falha, expressao, ponto, lista)
-
-        fundamentais = aplicar_limites_fundamentais(expressao, ponto)
-        if fundamentais is not None:
-            tecnica = [passos.passo_limite_fundamental(b, ponto) for b in fundamentais.blocos]
-            tecnica.append(passos.passo_ajuste_fundamental(expressao, ponto, fundamentais))
-            tecnica.append(passos.passo_produto_de_limites(expressao, ponto, fundamentais))
-            falha = _continuar(
-                expressao, ponto, fundamentais.resto, lista, tecnica, profundidade,
-                multiplicador=fundamentais.fator)
-            return _ou_laterais(falha, expressao, ponto, lista)
-
-    # As próximas etapas (infinito, L'Hôpital...) entram aqui.
+    # As próximas etapas (∞−∞, 0·∞, potências...) entram aqui.
     return _ou_laterais(Resultado(resolvido=False, passos=lista), expressao, ponto, lista)
