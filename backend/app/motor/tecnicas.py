@@ -19,6 +19,17 @@ class Fatoracao:
     simplificada: sp.Expr       # expressão depois do cancelamento
 
 
+def _fator_monico_fatorado(polinomio: sp.Expr) -> sp.Expr:
+    """Forma mônica (coeficiente líder 1) de `polinomio`, mas mantendo cada
+    fator irredutível fatorado (ex.: (x - 1)**2, não x**2 - 2*x + 1). Chamar
+    sp.factor direto no mônico às vezes expande fração para fora (ex.: com
+    coeficientes racionais, (2*x - 1)/2 em vez de x - 1/2); aqui tornamos cada
+    fator da fatoração mônico individualmente, o que evita isso."""
+    _, fatores = sp.factor_list(polinomio)
+    partes = [sp.Poly(f, x).monic().as_expr() ** mult for f, mult in fatores]
+    return sp.Mul(*partes) if partes else sp.Integer(1)
+
+
 def fatorar_e_cancelar(expressao: sp.Expr, ponto: sp.Expr) -> Fatoracao | None:
     """Fatora numerador e denominador de uma função racional e cancela o fator
     comum que se anula em `ponto`. Devolve None se a técnica não se aplica."""
@@ -42,8 +53,9 @@ def fatorar_e_cancelar(expressao: sp.Expr, ponto: sp.Expr) -> Fatoracao | None:
     simplificada = sp.cancel(sp.Mul(num_fat, 1 / den_fat, evaluate=False))
     if simplificada == expressao:
         return None
-    # Fator mônico (x - 2 em vez de 2x - 4), mais legível no passo a passo.
-    fator = sp.Poly(comum, x).monic().as_expr()
+    # Fator mônico (x - 2 em vez de 2x - 4) e fatorado (ex.: (x - 1)**2 em vez
+    # de x**2 - 2*x + 1), para bater com a forma exibida em num_fat/den_fat.
+    fator = _fator_monico_fatorado(comum)
     return Fatoracao(num_fat, den_fat, fator, simplificada)
 
 

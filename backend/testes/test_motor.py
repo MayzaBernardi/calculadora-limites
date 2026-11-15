@@ -384,6 +384,23 @@ def test_texto_e_latex_dos_passos_de_fatoracao():
     assert r.passos[-2].latex == r"\lim_{x \to 2} \left(x + 2\right) = 2 + 2 = 4"
 
 
+def test_fatoracao_fator_de_grau_2_mesma_forma_na_explicacao_e_no_latex():
+    # Regressão: com raiz repetida, o fator comum (gcd) tem grau 2, e antes da
+    # correção ficava expandido (x**2 - 2*x + 1) na explicação, enquanto o
+    # LaTeX (que vem de sp.factor do numerador/denominador) mostrava a forma
+    # fatorada (x - 1)^2 — texto e fórmula citavam nomes diferentes do mesmo
+    # fator. sp.limit confirma o valor 1/3.
+    r = _resolver("(x^2-2x+1)/(x^3-3x+2)", "1")
+    assert r.resolvido and r.valor == sp.Rational(1, 3)
+    fat = next(p for p in r.passos if p.titulo == "Fatoração")
+    canc = next(p for p in r.passos if p.titulo == "Cancelamento do fator comum")
+    assert "(x - 1)^2" in fat.explicacao
+    assert "x^2 - 2 · x + 1" not in fat.explicacao  # forma expandida (o bug antigo)
+    assert r"\left(x - 1\right)^{2}" in fat.latex
+    assert "(x - 1)^2" in canc.explicacao
+    assert r"\left(x - 1\right)^{2}" in canc.latex
+
+
 def test_validado_none_fora_da_fatoracao():
     assert _resolver("x+1", "2").validado is None
     assert _resolver("|x|/x", "0").validado is None  # laterais, sem conferência extra
