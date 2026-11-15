@@ -409,6 +409,39 @@ def passo_denominador_comum(expressao: sp.Expr, ponto: sp.Expr, d) -> Passo:
     )
 
 
+def passo_racionalizacao_infinita(expressao: sp.Expr, ponto: sp.Expr, d) -> Passo:
+    """d: RacionalizacaoInfinita (ver tecnicas.py). Cobre ∞ − ∞ com raiz e sem
+    fração nenhuma (quando denominador_comum não se aplica)."""
+    identidade = (
+        rf"\left({tex_ordenado(expressao)}\right)\left({tex(d.conjugado)}\right) = "
+        rf"{_com_parenteses(d.termo1)}^{{2}} - {_com_parenteses(d.termo2)}^{{2}}"
+        rf" = {_com_parenteses(d.termo1**2)} - {_com_parenteses(d.termo2**2)}"
+        rf" = {tex(d.diferenca_quadrados)}"
+    )
+    latex = (
+        rf"\begin{{gathered}} {limite_tex(expressao, ponto)}"
+        rf" \\ {identidade}"
+        rf" \\ {limite_tex(expressao, ponto)} = {limite_tex(d.nova, ponto)} \end{{gathered}}"
+    )
+    return Passo(
+        titulo="Conjugado (∞ − ∞)",
+        explicacao=(
+            "A forma é ∞ − ∞, e aqui aparece uma raiz, sem nenhuma fração para "
+            "reunir em um só denominador (por isso a técnica do denominador "
+            f"comum não ajuda neste caso). Multiplicamos e dividimos por "
+            f"{_texto_expr(d.conjugado)}, o conjugado de {_texto_expr(expressao)}: "
+            "a mesma soma, com o sinal entre os dois termos trocado. Isso não "
+            "muda o valor da expressão, pois é o mesmo que multiplicar por 1. "
+            "Pelo produto notável (a + b)(a − b) = a² − b², elevar cada termo "
+            "ao quadrado desfaz a raiz quadrada; o que sobra, "
+            f"{_texto_expr(d.diferenca_quadrados)}, já não tem raiz nenhuma. "
+            "Assim, a disputa entre os dois infinitos vira uma forma nova, "
+            "dividida pelo próprio conjugado."
+        ),
+        latex=latex,
+    )
+
+
 def passo_lhopital(expressao: sp.Expr, ponto: sp.Expr, forma: str, d) -> Passo:
     """d: LHopital (ver tecnicas.py). forma: "0/0" ou "oo/oo"."""
     forma_tex = r"\frac{0}{0}" if forma == "0/0" else r"\frac{\infty}{\infty}"

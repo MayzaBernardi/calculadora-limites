@@ -1754,3 +1754,91 @@ def test_denominador_comum_aplica_mas_nao_conclui_cai_em_laterais(funcao, ponto)
     r = _resolver(funcao, ponto)
     assert r.resolvido and r.existe is False and r.valor is None
     assert r.passos[-1].titulo == "Os laterais são diferentes: o limite não existe"
+
+
+# =============== Etapa 5: ∞−∞ por conjugado (raiz, sem fração) ===============
+
+from app.motor.tecnicas import racionalizar_oo_menos_oo  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto, esperado",
+    [
+        # Clássico: a raiz se comporta como x para x bem positivo; o
+        # conjugado troca a disputa de infinitos por um quociente ∞/∞, que
+        # a Regra de L'Hôpital (já implementada) resolve.
+        ("raiz(x^2+x)-x", "infinito", sp.Rational(1, 2)),
+        # Mesma função, mas em -infinito: aqui raiz(x²+x) se comporta como
+        # -x (e não como x), então os dois termos vão para +infinito e nem
+        # formam ∞−∞; resolvido direto por "sem indeterminação", sem
+        # precisar da técnica do conjugado (o valor muda de um lado para
+        # o outro, por isso vale confirmar os dois separadamente).
+        ("raiz(x^2+x)-x", "-infinito", sp.oo),
+        # Depois do conjugado, vira 1/(raiz(x+1)+raiz(x)): resolvida pela
+        # técnica de função limitada sobre infinito, sem precisar de
+        # L'Hôpital.
+        ("raiz(x+1)-raiz(x)", "infinito", 0),
+        ("raiz(x^2+1)-raiz(x^2-1)", "infinito", 0),
+        # De novo precisa de L'Hôpital depois do conjugado.
+        ("raiz(x^2+x+1)-x", "infinito", sp.Rational(1, 2)),
+    ],
+)
+def test_racionalizar_oo_menos_oo_resolve(funcao, ponto, esperado):
+    r = _resolver(funcao, ponto)
+    assert r.resolvido and r.existe and r.valor == esperado
+    assert sp.limit(ler_funcao(funcao), x, ler_ponto(ponto)) == esperado
+    assert r.passos[-1].titulo == "Resultado"
+    assert all(p.titulo and p.explicacao and p.latex for p in r.passos)
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto",
+    [
+        ("raiz(x^2+x)-x", "infinito"),
+        ("raiz(x+1)-raiz(x)", "infinito"),
+        ("raiz(x^2+1)-raiz(x^2-1)", "infinito"),
+        ("raiz(x^2+x+1)-x", "infinito"),
+    ],
+)
+def test_racionalizar_oo_menos_oo_e_realmente_usada(funcao, ponto):
+    # Em -infinito (acima) não aparece: já resolve por "sem indeterminação"
+    # antes de a forma oo-oo acionar esta técnica.
+    r = _resolver(funcao, ponto)
+    titulos = [p.titulo for p in r.passos]
+    assert "Conjugado (∞ − ∞)" in titulos
+
+
+@pytest.mark.parametrize(
+    "expressao, ponto",
+    [
+        # Sem raiz: não há por que fazer essa conta (é caso de
+        # denominador_comum ou termo_dominante, não desta técnica).
+        (x - sp.log(x), sp.oo),
+        # Soma de 3 termos (não 2): fora de escopo, só par a par.
+        (sp.sqrt(x) + sp.sqrt(x + 1) - sp.sqrt(x + 2), sp.oo),
+        # Caso de denominador_comum (tem fração, não tem raiz, ponto
+        # finito): o ponto finito já basta para recusar.
+        (1 / (x - 1) - 2 / (x**2 - 1), sp.Integer(1)),
+    ],
+)
+def test_racionalizar_oo_menos_oo_nao_se_aplica(expressao, ponto):
+    assert racionalizar_oo_menos_oo(expressao, ponto) is None
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto, esperado",
+    [
+        # Regressão: um caso já resolvido por denominador_comum e outro só
+        # com L'Hôpital continuam resolvendo como antes, sem a técnica nova.
+        ("1/(x-1) - 2/(x^2-1)", "1", sp.Rational(1, 2)),
+        ("(sen(x)-x)/x^3", "0", sp.Rational(-1, 6)),
+    ],
+)
+def test_racionalizar_oo_menos_oo_nao_interfere_em_tecnicas_existentes(
+    funcao, ponto, esperado
+):
+    r = _resolver(funcao, ponto)
+    assert r.resolvido and r.existe and r.valor == esperado
+    titulos = [p.titulo for p in r.passos]
+    assert "Conjugado (∞ − ∞)" not in titulos
+    assert sp.limit(ler_funcao(funcao), x, ler_ponto(ponto)) == esperado

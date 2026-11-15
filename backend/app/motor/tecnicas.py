@@ -395,6 +395,47 @@ def denominador_comum(expressao: sp.Expr, ponto: sp.Expr) -> DenominadorComum | 
 
 
 @dataclass
+class RacionalizacaoInfinita:
+    termo1: sp.Expr               # 1ª parcela da soma (Add tem exatamente 2 termos)
+    termo2: sp.Expr               # 2ª parcela
+    conjugado: sp.Expr            # termo1 - termo2
+    diferenca_quadrados: sp.Expr  # expand(termo1**2 - termo2**2), sem raiz
+    nova: sp.Expr                 # diferenca_quadrados / conjugado
+
+
+def racionalizar_oo_menos_oo(
+    expressao: sp.Expr, ponto: sp.Expr
+) -> RacionalizacaoInfinita | None:
+    """∞ − ∞ com raiz quadrada e sem fração nenhuma (por isso denominador_comum
+    não se aplica, como em sqrt(x²+x) − x): multiplicamos e dividimos pelo
+    conjugado termo1 − termo2. Como (termo1+termo2)(termo1−termo2) =
+    termo1² − termo2², a diferença de quadrados costuma cancelar a raiz que
+    causava a disputa entre os dois infinitos; a nova expressão (um
+    quociente) é algebricamente igual à original, mas numa forma (∞/∞, ou já
+    sem indeterminação) que o resolvedor sabe tratar recursivamente. Só para
+    x -> +oo ou -oo (em ponto finito fica fora de escopo) e só para soma de
+    exatamente 2 termos (3 termos ou mais fica fora de escopo). Devolve None
+    se a técnica não se aplica."""
+    if ponto not in (sp.oo, -sp.oo) or sp.count_ops(expressao) > 100:
+        return None
+    if not expressao.is_Add or len(expressao.args) != 2:
+        return None
+    termo1, termo2 = expressao.args
+    if not (_tem_raiz(termo1) or _tem_raiz(termo2)):
+        return None
+    conjugado = termo1 - termo2
+    if conjugado == 0:
+        return None
+    diferenca_quadrados = sp.expand(termo1**2 - termo2**2)
+    if _tem_raiz(diferenca_quadrados):
+        return None
+    nova = diferenca_quadrados / conjugado
+    if nova == expressao:
+        return None
+    return RacionalizacaoInfinita(termo1, termo2, conjugado, diferenca_quadrados, nova)
+
+
+@dataclass
 class LHopital:
     numerador: sp.Expr              # numerador original
     denominador: sp.Expr            # denominador original
