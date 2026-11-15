@@ -365,6 +365,36 @@ def limitada_sobre_infinito(
 
 
 @dataclass
+class DenominadorComum:
+    termos: list[sp.Expr]     # parcelas originais da soma/diferença
+    combinada: sp.Expr        # a mesma expressão, como uma única fração
+    numerador: sp.Expr
+    denominador: sp.Expr
+
+
+def denominador_comum(expressao: sp.Expr, ponto: sp.Expr) -> DenominadorComum | None:
+    """∞ − ∞: reescreve a soma/diferença de termos como uma única fração
+    (mesmo denominador). Isso troca a disputa entre dois infinitos de sinais
+    opostos por uma nova forma (0/0, k/0 ou ∞/∞), que o resolvedor já sabe
+    tratar recursivamente (fatoração, racionalização, limites fundamentais ou
+    L'Hôpital). Devolve None se não há fração em nenhum termo (por exemplo,
+    x - ln(x) ou sqrt(x²+x) - x, que ficam para a técnica do conjugado) ou se
+    juntar os termos não mudou nada."""
+    if not expressao.is_Add or sp.count_ops(expressao) > 100:
+        return None
+    termos = list(expressao.args)
+    if not any(sp.fraction(termo)[1] != 1 for termo in termos):
+        return None
+    combinada = sp.together(expressao)
+    if combinada == expressao:
+        return None
+    numerador, denominador = sp.fraction(combinada)
+    if denominador == 1:
+        return None
+    return DenominadorComum(termos, combinada, numerador, denominador)
+
+
+@dataclass
 class LHopital:
     numerador: sp.Expr              # numerador original
     denominador: sp.Expr            # denominador original

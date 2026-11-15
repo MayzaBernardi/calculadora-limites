@@ -390,6 +390,25 @@ def passo_produto_de_limites(expressao: sp.Expr, ponto: sp.Expr, f) -> Passo:
     )
 
 
+def passo_denominador_comum(expressao: sp.Expr, ponto: sp.Expr, d) -> Passo:
+    """d: DenominadorComum (ver tecnicas.py)."""
+    return Passo(
+        titulo="Denominador comum",
+        explicacao=(
+            "A forma é ∞ − ∞: os termos tendem a infinitos de sinais opostos, "
+            "e a substituição direta não decide sozinha qual dos dois domina. "
+            "Para resolver, reescrevemos a soma (ou diferença) de termos como "
+            "uma única fração, com o mesmo denominador. Assim, a disputa entre "
+            "dois infinitos vira uma forma nova (0/0, k/0 ou ∞/∞), que já "
+            "sabemos tratar."
+        ),
+        latex=(
+            f"{limite_tex(expressao, ponto)} = "
+            rf"\lim_{{x \to {tex(ponto)}}} \frac{{{tex(d.numerador)}}}{{{tex(d.denominador)}}}"
+        ),
+    )
+
+
 def passo_lhopital(expressao: sp.Expr, ponto: sp.Expr, forma: str, d) -> Passo:
     """d: LHopital (ver tecnicas.py). forma: "0/0" ou "oo/oo"."""
     forma_tex = r"\frac{0}{0}" if forma == "0/0" else r"\frac{\infty}{\infty}"
