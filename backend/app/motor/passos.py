@@ -504,6 +504,67 @@ def passo_lhopital(expressao: sp.Expr, ponto: sp.Expr, forma: str, d) -> Passo:
     return Passo(titulo="Regra de L'Hôpital", explicacao=explicacao, latex=latex)
 
 
+_EXPLICACAO_POR_FORMA = {
+    "1^oo": (
+        "Essa é a identidade clássica para resolver a indeterminação 1^∞: "
+        "como 1 elevado a qualquer coisa parece valer 1, mas o expoente cresce "
+        "sem limite, a disputa entre os dois decide o resultado, e é isso que "
+        "o novo limite (do expoente) vai revelar."
+    ),
+    "0^0": (
+        "Essa é a identidade usada para resolver a indeterminação 0^0: mesmo "
+        "que o SymPy calcule 0 elevado a 0 como 1, aqui base e expoente tendem "
+        "a 0 ao mesmo tempo, e é o novo limite (do expoente) que decide o "
+        "valor de verdade."
+    ),
+    "oo^0": (
+        "Essa é a identidade usada para resolver a indeterminação ∞^0: a base "
+        "cresce sem limite enquanto o expoente tende a 0, e é o novo limite "
+        "(do expoente) que decide quem vence essa disputa."
+    ),
+}
+
+
+def passo_potencia_exponencial(
+    expressao: sp.Expr, ponto: sp.Expr, forma: str, d
+) -> Passo:
+    """d: PotenciaExponencial (ver tecnicas.py). forma: "1^oo", "0^0" ou "oo^0"."""
+    base_tex, expoente_tex = _texto_expr(d.base), _texto_expr(d.expoente)
+    resto_tex = _texto_expr(d.resto)
+    explicacao = (
+        f"Aqui a base, {base_tex}, é positiva perto do ponto (sempre que a "
+        "função original está definida), então vale a identidade "
+        "f(x)^g(x) = e^(g(x) · ln(f(x))), porque a exponencial e o logaritmo "
+        "natural são funções inversas uma da outra. Além disso, a função "
+        "e^t é contínua, então o limite pode \"entrar\" no expoente: "
+        "o limite da potência é e elevado ao limite de g(x) · ln(f(x))."
+    )
+    if d.coeficiente != 1:
+        coef_tex = _texto_expr(d.coeficiente)
+        explicacao += (
+            f" O expoente, {expoente_tex}, é a constante {coef_tex} vezes "
+            f"{resto_tex}; como uma constante multiplicativa pode sair do "
+            "limite, primeiro calculamos o limite do que falta e só depois "
+            "multiplicamos pela constante."
+        )
+    explicacao += (
+        " " + _EXPLICACAO_POR_FORMA[forma]
+        + f" Com f(x) = {base_tex} e g(x) = {expoente_tex}, o novo limite a "
+        f"calcular é o de {resto_tex} · ln({base_tex})."
+    )
+    limite_novo = limite_tex(d.nova, ponto)
+    if d.coeficiente != 1:
+        exponencial_tex = rf"e^{{{tex(d.coeficiente)} \cdot {limite_novo}}}"
+    else:
+        exponencial_tex = rf"e^{{{limite_novo}}}"
+    latex = (
+        rf"\begin{{gathered}} {limite_tex(expressao, ponto)}"
+        rf" \\ f(x) = {tex(d.base)}, \quad g(x) = {tex(d.expoente)}"
+        rf" \\ {limite_tex(expressao, ponto)} = {exponencial_tex} \end{{gathered}}"
+    )
+    return Passo(titulo="Potência como exponencial", explicacao=explicacao, latex=latex)
+
+
 def passo_termo_dominante(expressao: sp.Expr, ponto: sp.Expr, d) -> Passo:
     """d: TermoDominante (ver tecnicas.py)."""
     a = texto_ponto(ponto)

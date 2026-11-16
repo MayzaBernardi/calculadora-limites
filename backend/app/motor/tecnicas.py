@@ -494,6 +494,40 @@ def produto_como_quociente(
 
 
 @dataclass
+class PotenciaExponencial:
+    base: sp.Expr          # f(x)
+    expoente: sp.Expr      # g(x)
+    log_base: sp.Expr      # ln(f(x))
+    coeficiente: sp.Expr   # constante numérica multiplicando o expoente (1, se não houver)
+    resto: sp.Expr         # expoente / coeficiente (o que de fato multiplica log_base em `nova`)
+    nova: sp.Expr          # resto * log_base: o novo limite a calcular (0 · ∞)
+
+
+def potencia_para_exponencial(
+    expressao: sp.Expr, ponto: sp.Expr
+) -> PotenciaExponencial | None:
+    """1^∞, 0^0 ou ∞^0: reescreve f(x)^g(x) usando a identidade
+    f^g = e^(g · ln f), válida onde f(x) é positiva (o chamador já garantiu a
+    forma via identificar_forma, então não reconferimos os limites de base e
+    expoente aqui). Separamos do expoente uma eventual constante numérica
+    multiplicativa (ex.: em 2x, a constante é 2) para que `nova` continue
+    sendo um produto de só 2 fatores (resto · ln f) — se deixássemos o
+    expoente inteiro, o SymPy "espalharia" a constante no produto, e a
+    técnica de 0 · ∞ (que só reconhece 2 fatores) não se aplicaria depois. O
+    resolvedor multiplica o resultado desse limite por `coeficiente` antes de
+    aplicar a exponencial. `nova` sempre cai numa forma 0 · ∞ (resolvida pelo
+    resolvedor de forma recursiva). Devolve None se a expressão não é uma
+    potência ou é grande demais."""
+    if not expressao.is_Pow or sp.count_ops(expressao) > 100:
+        return None
+    base, expoente = expressao.base, expressao.exp
+    log_base = sp.log(base)
+    coeficiente, resto = expoente.as_coeff_Mul()
+    nova = resto * log_base
+    return PotenciaExponencial(base, expoente, log_base, coeficiente, resto, nova)
+
+
+@dataclass
 class LHopital:
     numerador: sp.Expr              # numerador original
     denominador: sp.Expr            # denominador original
