@@ -436,6 +436,64 @@ def racionalizar_oo_menos_oo(
 
 
 @dataclass
+class ProdutoComoQuociente:
+    fator_zero: sp.Expr      # fator cujo limite é 0
+    fator_infinito: sp.Expr  # fator cujo limite é oo ou -oo
+    nova: sp.Expr            # fator_zero / (1/fator_infinito), sem auto-simplificar
+
+
+def produto_como_quociente(
+    expressao: sp.Expr, ponto: sp.Expr
+) -> ProdutoComoQuociente | None:
+    """0 · ∞: reescreve o produto fator_zero · fator_infinito como o quociente
+    fator_zero / (1/fator_infinito). Como 1/fator_infinito -> 0 (pois
+    fator_infinito -> ±∞), a nova expressão fica na forma 0/0 — o mesmo
+    valor da original, mas em uma estrutura de fração que o resolvedor já
+    sabe tratar recursivamente (fatoração, racionalização, limites
+    fundamentais ou L'Hôpital). Só para produto de exatamente 2 fatores
+    (`expressao.is_Mul` com `len(expressao.args) == 2`); produtos de 3 ou
+    mais fatores ficam fora de escopo. Devolve None se a técnica não se
+    aplica."""
+    if not expressao.is_Mul or len(expressao.args) != 2:
+        return None
+    if sp.count_ops(expressao) > 100:
+        return None
+    fator1, fator2 = expressao.args
+    lados = lados_definidos(expressao, ponto) if ponto.is_finite else [None]
+    if not lados:
+        return None
+    papel = None  # (fator_zero, fator_infinito), precisa ser o mesmo em todo lado
+    for lado in lados:
+        limite1 = limite_da_parte(fator1, ponto, lado)
+        limite2 = limite_da_parte(fator2, ponto, lado)
+        if limite1 is None or limite2 is None:
+            return None
+        if limite1 == 0 and limite2 in (sp.oo, -sp.oo):
+            papel_lado = (fator1, fator2)
+        elif limite2 == 0 and limite1 in (sp.oo, -sp.oo):
+            papel_lado = (fator2, fator1)
+        else:
+            return None
+        if papel is None:
+            papel = papel_lado
+        elif papel != papel_lado:
+            return None
+    fator_zero, fator_infinito = papel
+
+    # Duas camadas de evaluate=False: sem isso o SymPy desfaz a divisão de
+    # volta para fator_zero * fator_infinito (perdendo a estrutura de fração).
+    inverso = 1 / fator_infinito
+    denominador = sp.Pow(inverso, -1, evaluate=False)
+    nova = sp.Mul(fator_zero, denominador, evaluate=False)
+    if nova == expressao:
+        return None
+    numerador_nova, denominador_nova = sp.fraction(nova)
+    if numerador_nova != fator_zero or denominador_nova == 1:
+        return None
+    return ProdutoComoQuociente(fator_zero, fator_infinito, nova)
+
+
+@dataclass
 class LHopital:
     numerador: sp.Expr              # numerador original
     denominador: sp.Expr            # denominador original

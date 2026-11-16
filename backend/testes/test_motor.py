@@ -1842,3 +1842,111 @@ def test_racionalizar_oo_menos_oo_nao_interfere_em_tecnicas_existentes(
     titulos = [p.titulo for p in r.passos]
     assert "Conjugado (∞ − ∞)" not in titulos
     assert sp.limit(ler_funcao(funcao), x, ler_ponto(ponto)) == esperado
+
+
+# ======================= Etapa 5: 0 · ∞ (produto como quociente) =============
+
+from app.motor.tecnicas import produto_como_quociente  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto, esperado",
+    [
+        # Só existe para x > 0 (ln exige argumento positivo); depois de
+        # reescrito como quociente, a Regra de L'Hôpital resolve a forma 0/0,
+        # mas sobra um produto de 3 fatores que esta técnica não cobre de
+        # novo, então o fecho é pelos laterais (lado único).
+        ("x*ln(x)", "0", 0),
+        # Ambos os lados existem e dão o mesmo valor; depois do quociente,
+        # L'Hôpital resolve tanto 0/0 quanto, na sequência, ∞/∞.
+        ("(pi/2-x)*tg(x)", "pi/2", 1),
+        # sen(x) só é positivo à direita de 0 (ln exige argumento positivo);
+        # resolve em cadeia por limite fundamental e, depois, L'Hôpital.
+        ("sen(x)*ln(sen(x))", "0", 0),
+        # x → +infinito: forma 0 · ∞ "pura" (não é fração, então nem
+        # divisao_maior_potencia nem limitada_sobre_infinito se aplicam).
+        # Depois do quociente, o limite fundamental sen(u)/u resolve direto.
+        ("x*sen(1/x)", "infinito", 1),
+        # Mesma função, agora x → -infinito: mesmo valor, mesmo caminho.
+        ("x*sen(1/x)", "-infinito", 1),
+    ],
+)
+def test_produto_como_quociente_resolve(funcao, ponto, esperado):
+    r = _resolver(funcao, ponto)
+    assert r.resolvido and r.existe and r.valor == esperado
+    assert sp.limit(ler_funcao(funcao), x, ler_ponto(ponto)) == esperado
+    assert r.passos[-1].titulo == "Resultado"
+    assert all(p.titulo and p.explicacao and p.latex for p in r.passos)
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto",
+    [
+        ("x*ln(x)", "0"),
+        ("(pi/2-x)*tg(x)", "pi/2"),
+        ("sen(x)*ln(sen(x))", "0"),
+        ("x*sen(1/x)", "infinito"),
+        ("x*sen(1/x)", "-infinito"),
+    ],
+)
+def test_produto_como_quociente_e_realmente_usada(funcao, ponto):
+    r = _resolver(funcao, ponto)
+    titulos = [p.titulo for p in r.passos]
+    assert "Produto como quociente" in titulos
+
+
+@pytest.mark.parametrize(
+    "expressao, ponto",
+    [
+        # Produto de 3 fatores: fora de escopo (só 2 fatores).
+        (x * sp.log(x) * sp.sin(x), sp.Integer(0)),
+        # 0 · 0, não 0 · ∞: nenhum fator tende a infinito.
+        (x * sp.sin(x), sp.Integer(0)),
+        # ∞ − ∞ (soma, não produto): nem chega a ser Mul de 2 fatores.
+        (1 / (x - 1) - 2 / (x**2 - 1), sp.Integer(1)),
+        # Produto de 2 fatores, mas nenhum deles tende a infinito: (x+1) ->
+        # 1 (finito, não nulo) e sen(x) -> 0; é uma substituição direta
+        # comum, não uma forma 0 · ∞.
+        ((x + 1) * sp.sin(x), sp.Integer(0)),
+    ],
+)
+def test_produto_como_quociente_nao_se_aplica(expressao, ponto):
+    assert produto_como_quociente(expressao, ponto) is None
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto, esperado",
+    [
+        # Regressão: fatoração, L'Hôpital puro, denominador comum e
+        # conjugado (∞ − ∞) continuam resolvendo como antes, sem a técnica
+        # nova (nenhum destes é uma forma 0 · ∞).
+        ("(x^2-4)/(x-2)", "2", 4),
+        ("(sen(x)-x)/x^3", "0", sp.Rational(-1, 6)),
+        ("1/(x-1) - 2/(x^2-1)", "1", sp.Rational(1, 2)),
+        ("raiz(x^2+x)-x", "infinito", sp.Rational(1, 2)),
+    ],
+)
+def test_produto_como_quociente_nao_interfere_em_tecnicas_existentes(
+    funcao, ponto, esperado
+):
+    r = _resolver(funcao, ponto)
+    assert r.resolvido and r.existe and r.valor == esperado
+    titulos = [p.titulo for p in r.passos]
+    assert "Produto como quociente" not in titulos
+    assert sp.limit(ler_funcao(funcao), x, ler_ponto(ponto)) == esperado
+
+
+def test_produto_como_quociente_rejeita_quando_sympy_ja_reescreve_como_fracao():
+    """x*e^(-x) em +infinito "parece" 0 · ∞ (x -> ∞, e^(-x) -> 0), mas o
+    SymPy já representa e^(-x) como 1/e^x, então a forma real identificada é
+    ∞/∞, não 0 · ∞; a checagem defensiva da técnica rejeita o caso. O motor
+    ainda resolve, só que por outro caminho (L'Hôpital seguido de função
+    limitada sobre infinito), sem usar "Produto como quociente"."""
+    funcao, ponto = "x*e^(-x)", "infinito"
+    expressao, p = ler_funcao(funcao), ler_ponto(ponto)
+    assert sp.limit(expressao, x, p) == 0
+    assert produto_como_quociente(expressao, p) is None
+    r = _resolver(funcao, ponto)
+    assert r.resolvido and r.existe and r.valor == 0
+    titulos = [passo.titulo for passo in r.passos]
+    assert "Produto como quociente" not in titulos

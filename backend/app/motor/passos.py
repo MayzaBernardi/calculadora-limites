@@ -409,6 +409,41 @@ def passo_denominador_comum(expressao: sp.Expr, ponto: sp.Expr, d) -> Passo:
     )
 
 
+def passo_produto_como_quociente(expressao: sp.Expr, ponto: sp.Expr, d) -> Passo:
+    """d: ProdutoComoQuociente (ver tecnicas.py)."""
+    inverso_tex = rf"\frac{{1}}{{{tex(d.fator_infinito)}}}"
+
+    def _com_parenteses_texto(expr: sp.Expr) -> str:
+        # Parênteses no texto quando a parte é uma soma (ex.: pi/2 - x), para
+        # não ficar ambíguo como "1/pi/2 - x" em vez de "1/(pi/2 - x)".
+        texto = _texto_expr(expr)
+        if expr.is_Atom or expr.is_Function:
+            return texto
+        return f"({texto})"
+
+    infinito_txt = _texto_expr(d.fator_infinito)
+    zero_txt = _com_parenteses_texto(d.fator_zero)
+    inverso_txt = f"1/{_com_parenteses_texto(d.fator_infinito)}"
+    return Passo(
+        titulo="Produto como quociente",
+        explicacao=(
+            "A forma é 0 · ∞: um fator tende a 0 e o outro cresce sem limite "
+            "em módulo, e a substituição direta não decide sozinha o "
+            f"resultado. O fator {infinito_txt} tende a infinito. Dividir "
+            f"por {inverso_txt} é o mesmo que multiplicar por {infinito_txt} "
+            "(são inversos um do outro), então podemos escrever o produto "
+            f"{zero_txt} · {infinito_txt} como o quociente "
+            f"{zero_txt} / ({inverso_txt}), sem mudar o valor. Como "
+            f"{inverso_txt} tende a 0, a disputa entre zero e infinito vira "
+            "a forma 0/0, que já sabemos tratar."
+        ),
+        latex=(
+            f"{limite_tex(expressao, ponto)} = "
+            rf"\lim_{{x \to {tex(ponto)}}} \frac{{{tex(d.fator_zero)}}}{{{inverso_tex}}}"
+        ),
+    )
+
+
 def passo_racionalizacao_infinita(expressao: sp.Expr, ponto: sp.Expr, d) -> Passo:
     """d: RacionalizacaoInfinita (ver tecnicas.py). Cobre ∞ − ∞ com raiz e sem
     fração nenhuma (quando denominador_comum não se aplica)."""

@@ -12,8 +12,8 @@ from app.motor.seguro import limite_seguro
 from app.motor.tecnicas import (
     aplicar_limites_fundamentais, aplicar_lhopital, denominador_comum,
     divisao_maior_potencia, fatorar_e_cancelar, intervalo_limitado,
-    limitada_sobre_infinito, racionalizar, racionalizar_oo_menos_oo,
-    termo_dominante,
+    limitada_sobre_infinito, produto_como_quociente, racionalizar,
+    racionalizar_oo_menos_oo, termo_dominante,
 )
 
 PROFUNDIDADE_MAXIMA = 5
@@ -409,5 +409,12 @@ def _resolver(expressao: sp.Expr, ponto: sp.Expr, profundidade: int) -> Resultad
                 expressao, ponto, racionalizacao_oo.nova, lista, tecnica, profundidade)
             return _ou_laterais(falha, expressao, ponto, lista)
 
-    # 0·∞, potências... entram aqui.
+    if forma == "0*oo" and profundidade < PROFUNDIDADE_MAXIMA:
+        pq = produto_como_quociente(expressao, ponto)
+        if pq is not None:
+            tecnica = [passos.passo_produto_como_quociente(expressao, ponto, pq)]
+            falha = _continuar(expressao, ponto, pq.nova, lista, tecnica, profundidade)
+            return _ou_laterais(falha, expressao, ponto, lista)
+
+    # Potências (1^oo, 0^0, oo^0)... entram aqui.
     return _ou_laterais(Resultado(resolvido=False, passos=lista), expressao, ponto, lista)
