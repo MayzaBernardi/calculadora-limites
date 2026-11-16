@@ -93,11 +93,19 @@ def _forma_soma(termos: tuple, ponto: sp.Expr, lado) -> str | None:
 
 
 def _forma_no_lado(expressao: sp.Expr, ponto: sp.Expr, lado) -> str | None:
+    if expressao.is_Pow:
+        # Testamos a potência antes do sp.fraction: quando o expoente tem
+        # sinal negativo explícito no topo (ex.: (1+1/x)**(-x)), o SymPy
+        # reescreve a fração como 1/base**x e, se fôssemos checar o
+        # quociente primeiro, nunca reconheceríamos 1^oo/0^0/oo^0 nesses
+        # casos. Se não for uma das três formas de potência, cai no
+        # fallback de quociente abaixo (preserva k/0 em casos como 1/x).
+        forma = _forma_potencia(expressao.base, expressao.exp, ponto, lado)
+        if forma is not None:
+            return forma
     num, den = sp.fraction(expressao)
     if den != 1:
         return _forma_quociente(num, den, ponto, lado)
-    if expressao.is_Pow:
-        return _forma_potencia(expressao.base, expressao.exp, ponto, lado)
     if expressao.is_Mul:
         return _forma_produto(expressao.args, ponto, lado)
     if expressao.is_Add:

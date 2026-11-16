@@ -88,7 +88,7 @@ calculadora-limites/
 2. Indeterminação 0/0 (fatoração, racionalização, limites fundamentais) — **FEITA**
 3. Limites laterais, k/0 e domínio de um lado só — **FEITA**
 4. Limites no infinito — **FEITA**
-5. L'Hôpital, ∞−∞, 0·∞ e indeterminações com potência
+5. L'Hôpital, ∞−∞, 0·∞ e indeterminações com potência — **FEITA**
 6. API (rota `/limite`)
 7. Página (formulário e passo a passo)
 8. Gráfico
@@ -112,20 +112,30 @@ Situação das branches no GitHub:
   em dois PRs: o primeiro commit (termo dominante de polinômios, `277c346`)
   via PR #9 (`55413b4`); os outros dois (`eeeff73` divisão pela maior
   potência e `027c519` função limitada sobre infinito) via PR #10 (`e416913`).
-  Etapa 4 completa e mesclada.
+  Etapa 4 completa e mesclada. Da Etapa 5, já estão na `main` o L'Hôpital
+  (`a8e41ed`) via PR #12 (`529b26b`), e depois `80b93a4` (corrige um bug de
+  LaTeX da fatoração, Etapa 2), `6673725` ∞−∞ por denominador comum,
+  `bf04871` ∞−∞ por conjugado e `d89beb2` 0·∞ por produto como quociente,
+  via PR #13 (`1454310`).
 - `feature/etapa-2-zero-sobre-zero`, `feature/etapa-3-laterais-k-sobre-zero` e
   `feature/etapa-4-limites-no-infinito`: já mescladas na `main`; só falta
   apagar os remotos quando quiserem.
+- `feature/etapa-5-lhopital-potencias`: reaproveitada depois de cada merge
+  (branch recriada a partir da `main` atualizada); agora tem só o commit
+  `a0f3447`, a última técnica da etapa (potências indeterminadas:
+  1^∞, 0^0, ∞^0), com a Etapa 5 completa nela. Revisado pelo
+  `revisor-matematico` e com os testes passando; falta o `git push` e, se
+  quiserem, abrir o PR (a orquestradora não cria PR sem pedirem).
 
 Não presuma: rode `git fetch` e confira `git log --oneline --graph --all`.
 
 Ambiente: `backend/.venv` já existe e é ignorado pelo git. Se faltar, rode
 `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` dentro de
 `backend/` (no Ubuntu pode ser preciso `apt install python3.12-venv`). Testes:
-`cd backend && .venv/bin/pytest -q` (hoje: 411 passando, em cerca de 68 s;
+`cd backend && .venv/bin/pytest -q` (hoje: 553 passando, em cerca de 2 min;
 cada limite roda em processo filho e alguns testes esperam o timeout de 3 s).
 
-**Código em `backend/app/motor/` (fim da Etapa 4):**
+**Código em `backend/app/motor/` (fim da Etapa 5):**
 
 - `entrada.py` (sem mudanças desde a Etapa 1)
   - Define `x` (símbolo real) e `ErroEntrada` (a mensagem vai para o usuário).
@@ -138,7 +148,7 @@ cada limite roda em processo filho e alguns testes esperam o timeout de 3 s).
     passa por aqui. Roda em processo filho (fork) com timeout e devolve `None`
     se estourar (`executar_com_timeout` serve para outras contas). Antes, reescreve `a**x` (bug do SymPy em -oo) e
     `sqrt(quadrado perfeito)` como `Abs`. A API da Etapa 6 deve usá-lo.
-- `formas.py` (novo)
+- `formas.py`
   - `identificar_forma(expr, ponto)` devolve `"0/0"`, `"oo/oo"`, `"k/0"`,
     `"oo/0"`, `"0*oo"`, `"oo-oo"`, `"1^oo"`, `"0^0"`, `"oo^0"` ou `None`.
     Em ponto finito a forma precisa ser a mesma pelos dois lados (lados onde a
@@ -146,6 +156,14 @@ cada limite roda em processo filho e alguns testes esperam o timeout de 3 s).
   - `limite_da_parte`, `definida_no_lado` e `lados_definidos` (amostra numérica
     em float, dentro de `executar_com_timeout`; se não der para avaliar a
     tempo o lado é "não confiável" e a forma vira `None`).
+  - `_forma_no_lado` (Etapa 5): testa a potência (`_forma_potencia`) *antes*
+    de `sp.fraction`. Correção de um bug achado na revisão da Etapa 5: com
+    sinal negativo explícito no expoente (ex.: `(1+1/x)^(-x)`), o SymPy
+    reescreve a potência como `1/base**x`, e testar o quociente primeiro
+    fazia a forma nunca ser reconhecida como `1^oo`/`0^0`/`oo^0` (o motor
+    caía num passo que afirmava, errado, que "não há indeterminação"). Cai no
+    quociente normalmente (`k/0` em `1/x`, por exemplo) quando não é uma das
+    três formas de potência.
 - `laterais.py` (Etapa 3)
   - `calcular_laterais(expr, ponto)` devolve `Laterais(esquerda, direita)`,
     com `None` no lado onde a função não existe; devolve `None` se algum lado
@@ -178,14 +196,46 @@ cada limite roda em processo filho e alguns testes esperam o timeout de 3 s).
     limitada; não reconhece produto de duas partes que dependem de x, como
     sen(x)·cos(x)). Conclui por confronto em valor absoluto
     (`|g/h| <= C/|h| -> 0`) que o limite é sempre 0. Não trata o caso em
-    que é o denominador que oscila (`x/sen(x)`, sem limite, fica para a
-    Etapa 5 ou sem conclusão).
+    que é o denominador que oscila (`x/sen(x)`, sem limite).
+  - `aplicar_lhopital` (Etapa 5): 0/0 ou ∞/∞ com fração explícita
+    (`sp.fraction`); deriva numerador e denominador separadamente (nunca a
+    fração inteira). Último recurso para 0/0 (depois de fatoração,
+    racionalização e fundamentais); primeira tentativa para ∞/∞ (que as
+    outras não cobrem). Devolve `None` se não há fração, se é grande demais,
+    ou se derivar não mudou nada.
+  - `denominador_comum` e `racionalizar_oo_menos_oo` (Etapa 5, ∞−∞): o
+    primeiro junta soma/diferença de termos com `sp.together` (qualquer
+    `Add`, desde que algum termo tenha fração); o segundo é só para soma de
+    exatamente 2 termos com raiz quadrada e sem fração nenhuma (ex.:
+    `sqrt(x²+x) - x`), multiplica e divide pelo conjugado. Tentados nessa
+    ordem; o resolvedor tenta os dois antes de desistir.
+  - `produto_como_quociente` (Etapa 5, 0·∞): só para produto de exatamente 2
+    fatores; reescreve `fator_zero · fator_infinito` como
+    `fator_zero / (1/fator_infinito)` (duas camadas de `evaluate=False` para
+    o SymPy não desfazer a divisão). Produtos de 3+ fatores ficam fora de
+    escopo (fallback de laterais, nunca valor errado) — é a limitação que
+    afeta, por exemplo, `2*x*sen(1/x)` fora do contexto de potências (veja
+    `potencia_para_exponencial` abaixo, que contorna isso só para o caso de
+    potência, separando o coeficiente antes).
+  - `potencia_para_exponencial` (Etapa 5, última técnica): 1^∞, 0^0 ou ∞^0;
+    reescreve `f(x)^g(x)` como `e^(g(x)·ln(f(x)))` (base positiva garantida
+    por quem já identificou a forma). Separa do expoente uma eventual
+    constante numérica (`expoente.as_coeff_Mul()`) antes de montar o produto
+    `resto · ln(f)`, para que ele continue com exatamente 2 fatores (o que
+    `produto_como_quociente` exige); a constante volta a multiplicar o
+    expoente da exponencial no final (cobre, por exemplo,
+    `(1+1/x)^(2x) → e²`, que sem isso ficaria sem conclusão pela limitação
+    acima).
 - `passos.py`
   - `Passo(titulo, explicacao, latex)`; helpers `tex`, `tex_ordenado`,
     `texto_ponto`, `limite_tex` (soma entra entre parênteses) e
     `substituicao_tex`.
   - Construtores de passo de cada técnica, mais `passo_forma_indeterminada`,
-    `passo_resultado` e `passo_tecnica_sem_conclusao`.
+    `passo_resultado` e `passo_tecnica_sem_conclusao`. `passo_lhopital`,
+    `passo_denominador_comum`, `passo_racionalizacao_infinita`,
+    `passo_produto_como_quociente` e `passo_potencia_exponencial` (Etapa 5)
+    seguem o mesmo padrão: explicação em português da técnica, LaTeX
+    mostrando a reescrita.
 - `resolvedor.py`
   - `Resultado(resolvido, existe, valor, passos, validado, esquerda, direita)`;
     `validado` diz se o valor bateu com `sp.limit` (`None`: não conferido).
@@ -198,36 +248,49 @@ cada limite roda em processo filho e alguns testes esperam o timeout de 3 s).
     passos (laterais, análise de sinal, conclusão) e resolve. Divergência de
     uma técnica com o SymPy (`validado False`) não é escondida pelos laterais.
   - `resolver(expr, ponto, profundidade=0)`: substituição direta, identifica a
-    forma e, se for 0/0, tenta fatoração, racionalização e limites
-    fundamentais, nessa ordem (`PROFUNDIDADE_MAXIMA = 5`). `_continuar`
-    resolve a expressão transformada e confere com `conferir_com_sympy`. Se a
-    técnica não conclui ou diverge do SymPy, descarta os passos dela e
-    registra um passo honesto ("Não conseguimos concluir" / "Conferência não
-    coincidiu"), com `resolvido=False`. Em ponto finito, se a conferência não
-    confirma (`validado is None`), a técnica também não afirma o valor; só a
+    forma e, se for 0/0, tenta fatoração, racionalização, limites
+    fundamentais e por fim L'Hôpital, nessa ordem; se for ∞/∞, L'Hôpital
+    direto; se for ∞−∞, denominador comum ou conjugado; se for 0·∞, produto
+    como quociente; se for 1^∞/0^0/∞^0, potência como exponencial (todas as
+    técnicas da Etapa 5), com `PROFUNDIDADE_MAXIMA = 5`. `_continuar`
+    resolve a expressão transformada e confere com `conferir_com_sympy`; tem
+    os parâmetros opcionais `multiplicador` (fator de um limite fundamental,
+    ou a constante tirada do expoente numa potência) e `exponencial` (Etapa
+    5: o valor final é `e^(multiplicador · valor_da_subexpressão)`, em vez
+    de `multiplicador · valor`). Se a técnica não conclui ou diverge do
+    SymPy, descarta os passos dela e registra um passo honesto ("Não
+    conseguimos concluir" / "Conferência não coincidiu"), com
+    `resolvido=False`. Em ponto finito, se a conferência não confirma
+    (`validado is None`), a técnica também não afirma o valor; só a
     substituição direta pura vale sem conferência. Decimais viram racionais.
 
 Testes em `backend/testes/test_motor.py`; `pytest.ini` já configura
 `pythonpath = .`.
 
-Limitações conhecidas ao fim da Etapa 4: a derivação passo a passo de 0·∞,
-0^0, ∞−∞ e afins (`x*ln(x)`, `x^x` em 0, L'Hôpital em geral) fica para a
-Etapa 5. Funções que oscilam sem um numerador reconhecido como limitado
+Limitações conhecidas ao fim da Etapa 5: a derivação passo a passo de 0·∞,
+0^0, ∞−∞ e potências (que ficavam para a Etapa 5) agora está feita. Segue
+valendo: funções que oscilam sem um numerador reconhecido como limitado
 (`sen(1/x)` em 0, `x/sen(x)` em ±∞, `sen(x)*cos(x)/x` em ±∞) terminam sem
-conclusão — de propósito, nunca com valor errado. A Etapa 3 foi feita sem os
-agentes (indisponíveis na sessão); a revisão foi uma varredura de 1057
-limites contra o `sp.limit`, com 0 divergências. A Etapa 4 usou os agentes
+conclusão — de propósito, nunca com valor errado; `produto_como_quociente`
+só aceita produto de exatamente 2 fatores (um 0·∞ genérico com 3+ fatores,
+fora do caso de potência com coeficiente que `potencia_para_exponencial` já
+contorna, cai no fallback de laterais); `racionalizar_oo_menos_oo` só aceita
+soma de exatamente 2 termos com raiz. A Etapa 3 foi feita sem os agentes
+(indisponíveis na sessão); a revisão foi uma varredura de 1057 limites
+contra o `sp.limit`, com 0 divergências. As Etapas 4 e 5 usaram os agentes
 (`motor-limites` e `revisor-matematico`); a revisão de cada técnica incluiu
 varreduras de centenas de casos aleatórios contra `sp.limit`, 0 divergências
-encontradas (uma delas achou um bug real de LaTeX — parênteses faltando na
-técnica de divisão pela maior potência quando numerador/denominador têm mais
-de um termo —, já corrigido antes do commit). Limites fundamentais (Etapa 2)
-não tratam: deslocamento por π (`sen(pi*x)/(x-1)` em 1), `x*sen(1/x)`,
-`(sen x - x)/x^3` (precisa de L'Hôpital ou Taylor) e potências de sen
-diferentes de 2. O teste de domínio (`definida_no_lado`) é numérico, com
-amostra a 1e-6 do ponto, e roda em processo com timeout de 3 s; funções que
-oscilam muito perto do ponto podem ser classificadas errado ou ficar sem
-conclusão (de propósito, nunca com valor errado).
+numéricas encontradas (a da Etapa 4 achou um bug real de LaTeX — parênteses
+faltando na divisão pela maior potência —, corrigido antes do commit; a da
+Etapa 5, na técnica de potências, achou um bug real de identificação de
+forma — veja `_forma_no_lado` acima —, também corrigido antes do commit).
+Limites fundamentais (Etapa 2) não tratam: deslocamento por π
+(`sen(pi*x)/(x-1)` em 1), `x*sen(1/x)` e potências de sen diferentes de 2
+(mas `(sen x - x)/x^3`, que citava aqui, já é resolvido por L'Hôpital desde
+a Etapa 5). O teste de domínio (`definida_no_lado`) é numérico, com amostra
+a 1e-6 do ponto, e roda em processo com timeout de 3 s; funções que oscilam
+muito perto do ponto podem ser classificadas errado ou ficar sem conclusão
+(de propósito, nunca com valor errado).
 
 ## 6. Como trabalhar (pedido explícito da dona do projeto)
 
@@ -278,8 +341,11 @@ a entrada, se sobrar tempo.
 
 ## 9. Próximo passo
 
-Etapa 4 mesclada na `main` (PR #10). A próxima é a Etapa 5: L'Hôpital,
-∞−∞ (denominador comum ou conjugado), 0·∞ (reescrever como quociente) e as
-indeterminações com potência (1^∞, 0^0, ∞^0, via `lim f^g = e^(lim g·ln f)`),
-na branch `feature/etapa-5-lhopital-potencias`, criada a partir da `main`
-atualizada.
+Etapa 5 completa na branch `feature/etapa-5-lhopital-potencias` (falta o
+`git push` e, se quiserem, abrir e mesclar o PR — a orquestradora não faz
+isso sem pedirem). Depois de mesclada, a próxima é a Etapa 6: API (rota
+`POST /limite`, contrato de resposta em `backend/app/modelos/schemas.py`),
+numa branch nova a partir da `main` atualizada. É a primeira etapa que
+aciona o agente `api-backend`; só depois do contrato fechado é que o
+`frontend-web` pode começar a Etapa 7 (ver `CLAUDE.md`, seção "Etapas de API
+e página").

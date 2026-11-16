@@ -182,6 +182,14 @@ def test_passos_tem_latex_e_explicacao():
         ("x*e^x", "-infinito", "0*oo"),
         ("(x^2-4)/(x-2)", "-infinito", "oo/oo"),
         ("x^2/(x+1)", "-infinito", "oo/oo"),
+        # Expoente com sinal negativo explícito no topo: sp.fraction
+        # reescreveria isso como 1/base**x antes de checarmos is_Pow, e sem
+        # testar a potência primeiro a forma nunca seria reconhecida (bug
+        # corrigido nesta etapa). k/0 em 1/x (= x**-1) continua funcionando,
+        # porque _forma_potencia não reconhece esse padrão e cai no fallback.
+        ("(1+1/x)^(-x)", "infinito", "1^oo"),
+        ("x^(-x)", "0", "0^0"),
+        ("(cos(x))^(-1/x^2)", "0", "1^oo"),
     ],
 )
 def test_identificar_forma(funcao, ponto, esperada):
@@ -1950,3 +1958,197 @@ def test_produto_como_quociente_rejeita_quando_sympy_ja_reescreve_como_fracao():
     assert r.resolvido and r.existe and r.valor == 0
     titulos = [passo.titulo for passo in r.passos]
     assert "Produto como quociente" not in titulos
+
+
+# ============ Etapa 5: potências indeterminadas (1^∞, 0^0, ∞^0) =============
+
+from app.motor.tecnicas import potencia_para_exponencial  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto, esperado",
+    [
+        # 1^oo: clássico (definição de e) e variações, em ponto finito e no
+        # infinito; depois da reescrita, cai em 0 · ∞ e depois em limite
+        # fundamental (ln(1+u)/u).
+        ("(1+1/x)^x", "infinito", sp.E),
+        ("(1+x)^(1/x)", "0", sp.E),
+        # cos(x) é positivo nos dois lados de 0, então a forma vale dos dois
+        # lados; depois da reescrita, recai duas vezes no limite fundamental
+        # ln(1+u)/u (u = cos(x) - 1).
+        ("(cos(x))^(1/x^2)", "0", sp.exp(sp.Rational(-1, 2))),
+        # 0^0: só existe à direita de 0 (base x não pode ser negativa com
+        # expoente não inteiro), então a forma e a técnica só valem nesse
+        # lado; o motor conclui pelo lado único.
+        ("x^x", "0", 1),
+        ("x^(sen(x))", "0", 1),
+        # oo^0: x -> +infinito; depois da reescrita, ln(x)/x (ou
+        # ln(ln(x))/x) é oo/oo, resolvida por L'Hôpital.
+        ("x^(1/x)", "infinito", 1),
+        ("ln(x)^(1/x)", "infinito", 1),
+        # Expoente com sinal negativo explícito no topo (-x, não x com sinal
+        # trocado "por fora"): sem a correção em formas.py, sp.fraction
+        # reescrevia isso como 1/base**x antes de testarmos is_Pow, e a
+        # forma 1^oo/0^0 nunca era reconhecida.
+        ("(1+1/x)^(-x)", "infinito", sp.exp(-1)),
+        ("x^(-x)", "0", 1),
+        # Expoente com coeficiente numérico explícito (2x, 3x): sem separar
+        # o coeficiente, g(x)·ln(f(x)) viraria um produto de 3 fatores, fora
+        # do alcance de produto_como_quociente (só reconhece 2 fatores).
+        ("(1+1/x)^(2*x)", "infinito", sp.exp(2)),
+        ("(1+2/x)^(3*x)", "infinito", sp.exp(6)),
+    ],
+)
+def test_potencia_exponencial_resolve(funcao, ponto, esperado):
+    r = _resolver(funcao, ponto)
+    assert r.resolvido and r.existe
+    assert sp.simplify(r.valor - esperado) == 0
+    esperado_sympy = sp.limit(ler_funcao(funcao), x, ler_ponto(ponto))
+    assert sp.simplify(esperado_sympy - esperado) == 0
+    assert r.passos[-1].titulo == "Resultado"
+    assert all(p.titulo and p.explicacao and p.latex for p in r.passos)
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto",
+    [
+        ("(1+1/x)^x", "infinito"),
+        ("(1+x)^(1/x)", "0"),
+        ("(cos(x))^(1/x^2)", "0"),
+        ("x^x", "0"),
+        ("x^(sen(x))", "0"),
+        ("x^(1/x)", "infinito"),
+        ("ln(x)^(1/x)", "infinito"),
+        ("(1+1/x)^(-x)", "infinito"),
+        ("x^(-x)", "0"),
+        ("(1+1/x)^(2*x)", "infinito"),
+        ("(1+2/x)^(3*x)", "infinito"),
+    ],
+)
+def test_potencia_exponencial_e_realmente_usada(funcao, ponto):
+    r = _resolver(funcao, ponto)
+    titulos = [p.titulo for p in r.passos]
+    assert "Potência como exponencial" in titulos
+    assert r.validado is True
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto, forma",
+    [
+        ("(1+1/x)^x", "infinito", "1^oo"),
+        ("x^x", "0", "0^0"),
+        ("x^(1/x)", "infinito", "oo^0"),
+        ("(1+1/x)^(-x)", "infinito", "1^oo"),
+        ("x^(-x)", "0", "0^0"),
+    ],
+)
+def test_potencia_exponencial_identifica_a_forma_certa(funcao, ponto, forma):
+    e, p = ler_funcao(funcao), ler_ponto(ponto)
+    assert identificar_forma(e, p) == forma
+
+
+def test_potencia_exponencial_nao_usa_mais_sem_indeterminacao_com_expoente_negativo():
+    # Antes da correção em formas.py, sp.fraction reescrevia (1+1/x)**(-x)
+    # como 1/(1+1/x)**x antes de testarmos is_Pow, então identificar_forma
+    # nunca via a potência: o motor caía no atalho "Sem indeterminação" e
+    # afirmava (de forma matematicamente falsa) que não havia indeterminação
+    # nenhuma, mesmo sendo 1^oo disfarçado. Agora a forma é reconhecida e a
+    # técnica de potências entra em ação.
+    r = _resolver("(1+1/x)^(-x)", "infinito")
+    titulos = [p.titulo for p in r.passos]
+    assert "Potência como exponencial" in titulos
+    assert "Sem indeterminação" not in titulos
+    assert r.resolvido and r.existe and r.valor == sp.exp(-1)
+
+
+@pytest.mark.parametrize(
+    "expressao, ponto",
+    [
+        # Não é potência (is_Pow): nenhuma base/expoente para reescrever.
+        (x + 1, sp.Integer(0)),
+        (sp.sin(x), sp.Integer(0)),
+        (x / (x - 1), sp.oo),
+    ],
+)
+def test_potencia_exponencial_nao_se_aplica(expressao, ponto):
+    assert potencia_para_exponencial(expressao, ponto) is None
+
+
+def test_potencia_exponencial_unidade():
+    d = potencia_para_exponencial((1 + 1 / x) ** x, sp.oo)
+    assert d is not None
+    assert d.base == 1 + 1 / x
+    assert d.expoente == x
+    assert d.log_base == sp.log(1 + 1 / x)
+    assert d.coeficiente == 1  # expoente sem coeficiente numérico explícito
+    assert d.resto == x
+    assert sp.simplify(d.nova - x * sp.log(1 + 1 / x)) == 0
+
+
+@pytest.mark.parametrize(
+    "expoente, coeficiente_esperado, resto_esperado",
+    [
+        (x, 1, x),
+        (-x, -1, x),
+        (2 * x, 2, x),
+        (sp.Rational(1, 2) * x, sp.Rational(1, 2), x),
+        (1 / x, 1, 1 / x),           # Pow isolado: não é Mul, coeficiente 1
+        (-1 / x**2, -1, 1 / x**2),
+    ],
+)
+def test_potencia_exponencial_separa_coeficiente_do_expoente(
+    expoente, coeficiente_esperado, resto_esperado
+):
+    # d.nova precisa continuar sendo um produto de só 2 fatores (resto *
+    # log_base), senão produto_como_quociente (que só aceita 2 fatores) não
+    # se aplica depois.
+    d = potencia_para_exponencial(sp.Pow(2 + x, expoente), sp.oo)
+    assert d is not None
+    assert d.coeficiente == coeficiente_esperado
+    assert d.resto == resto_esperado
+    assert len(sp.Mul.make_args(d.nova)) == 2
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto, esperado",
+    [
+        # Regressão: técnicas já existentes continuam resolvendo como antes,
+        # sem passar pela técnica de potências (nenhuma dessas formas é
+        # 1^oo, 0^0 ou oo^0).
+        ("(x^2-4)/(x-2)", "2", 4),
+        ("(sen(x)-x)/x^3", "0", sp.Rational(-1, 6)),
+        ("x*ln(x)", "0", 0),
+    ],
+)
+def test_potencia_exponencial_nao_interfere_em_tecnicas_existentes(
+    funcao, ponto, esperado
+):
+    r = _resolver(funcao, ponto)
+    assert r.resolvido and r.existe and r.valor == esperado
+    titulos = [p.titulo for p in r.passos]
+    assert "Potência como exponencial" not in titulos
+    assert sp.limit(ler_funcao(funcao), x, ler_ponto(ponto)) == esperado
+
+
+def test_potencia_exponencial_passo_mostra_base_expoente_e_novo_limite():
+    r = _resolver("(1+1/x)^x", "infinito")
+    passo = next(p for p in r.passos if p.titulo == "Potência como exponencial")
+    assert "e^(g(x) · ln(f(x)))" in passo.explicacao or "g(x) · ln(f(x))" in passo.explicacao
+    assert "f(x) =" in passo.latex and "g(x) =" in passo.latex
+    assert "e^{" in passo.latex
+
+
+def test_potencia_exponencial_divergencia_nao_e_escondida(monkeypatch):
+    from app.motor import resolvedor
+    original = resolvedor.conferir_com_sympy
+    alvo = ler_funcao("(1+1/x)^x")
+
+    def falso(expressao, ponto, valor, lado="+-"):
+        if expressao == alvo:
+            return False
+        return original(expressao, ponto, valor, lado)
+
+    monkeypatch.setattr(resolvedor, "conferir_com_sympy", falso)
+    r = _resolver("(1+1/x)^x", "infinito")
+    assert not r.resolvido and r.validado is False
+    assert r.passos[-1].titulo == "Conferência não coincidiu"

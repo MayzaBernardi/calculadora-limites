@@ -12,8 +12,8 @@ from app.motor.seguro import limite_seguro
 from app.motor.tecnicas import (
     aplicar_limites_fundamentais, aplicar_lhopital, denominador_comum,
     divisao_maior_potencia, fatorar_e_cancelar, intervalo_limitado,
-    limitada_sobre_infinito, produto_como_quociente, racionalizar,
-    racionalizar_oo_menos_oo, termo_dominante,
+    limitada_sobre_infinito, potencia_para_exponencial, produto_como_quociente,
+    racionalizar, racionalizar_oo_menos_oo, termo_dominante,
 )
 
 PROFUNDIDADE_MAXIMA = 5
@@ -162,17 +162,24 @@ def conferir_com_sympy(
 def _continuar(
     original: sp.Expr, ponto: sp.Expr, nova: sp.Expr, base: list[Passo],
     passos_tecnica: list[Passo], profundidade: int,
-    multiplicador: sp.Expr = sp.Integer(1),
+    multiplicador: sp.Expr = sp.Integer(1), exponencial: bool = False,
 ) -> Resultado:
     """Resolve a expressão transformada por uma técnica e confere com o SymPy.
     Se a técnica não conclui, ou o valor diverge do sp.limit, descarta os
-    passos da técnica e acrescenta um passo honesto no lugar."""
+    passos da técnica e acrescenta um passo honesto no lugar. `exponencial`
+    é usado pela técnica de potências (f^g = e^(g·ln f)): o valor final é
+    e elevado a (multiplicador vezes o valor da subexpressão) — o
+    multiplicador aqui é a constante numérica tirada do expoente (ex.: o 2
+    de 2x), não o fator de um limite fundamental."""
     sub = resolver(nova, ponto, profundidade + 1)
     if not (sub.resolvido and sub.existe):
         return Resultado(
             resolvido=False, passos=base + [passos.passo_tecnica_sem_conclusao("sem_conclusao")]
         )
-    valor = sp.simplify(multiplicador * sub.valor)
+    if exponencial:
+        valor = sp.simplify(sp.exp(multiplicador * sub.valor))
+    else:
+        valor = sp.simplify(multiplicador * sub.valor)
     validado = conferir_com_sympy(original, ponto, valor)
     if validado is False:
         return Resultado(
@@ -416,5 +423,13 @@ def _resolver(expressao: sp.Expr, ponto: sp.Expr, profundidade: int) -> Resultad
             falha = _continuar(expressao, ponto, pq.nova, lista, tecnica, profundidade)
             return _ou_laterais(falha, expressao, ponto, lista)
 
-    # Potências (1^oo, 0^0, oo^0)... entram aqui.
+    if forma in ("1^oo", "0^0", "oo^0") and profundidade < PROFUNDIDADE_MAXIMA:
+        potencia = potencia_para_exponencial(expressao, ponto)
+        if potencia is not None:
+            tecnica = [passos.passo_potencia_exponencial(expressao, ponto, forma, potencia)]
+            falha = _continuar(
+                expressao, ponto, potencia.nova, lista, tecnica, profundidade,
+                multiplicador=potencia.coeficiente, exponencial=True)
+            return _ou_laterais(falha, expressao, ponto, lista)
+
     return _ou_laterais(Resultado(resolvido=False, passos=lista), expressao, ponto, lista)
