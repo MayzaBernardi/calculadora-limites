@@ -89,7 +89,7 @@ calculadora-limites/
 3. Limites laterais, k/0 e domínio de um lado só — **FEITA**
 4. Limites no infinito — **FEITA**
 5. L'Hôpital, ∞−∞, 0·∞ e indeterminações com potência — **FEITA**
-6. API (rota `/limite`)
+6. API (rota `/limite`) — **FEITA**
 7. Página (formulário e passo a passo)
 8. Gráfico
 9. Testes de todos os tipos e revisão das explicações
@@ -120,20 +120,22 @@ Situação das branches no GitHub:
 - `feature/etapa-2-zero-sobre-zero`, `feature/etapa-3-laterais-k-sobre-zero` e
   `feature/etapa-4-limites-no-infinito`: já mescladas na `main`; só falta
   apagar os remotos quando quiserem.
-- `feature/etapa-5-lhopital-potencias`: reaproveitada depois de cada merge
-  (branch recriada a partir da `main` atualizada); agora tem só o commit
-  `a0f3447`, a última técnica da etapa (potências indeterminadas:
-  1^∞, 0^0, ∞^0), com a Etapa 5 completa nela. Revisado pelo
-  `revisor-matematico` e com os testes passando; falta o `git push` e, se
-  quiserem, abrir o PR (a orquestradora não cria PR sem pedirem).
+- `feature/etapa-5-lhopital-potencias`: Etapa 5 completa nela (último commit
+  `3c353b7`), com push feito; a dona do projeto vai abrir e mesclar o PR.
+- `feature/etapa-6-api`: criada a partir da `feature/etapa-5-lhopital-potencias`
+  (ainda não mesclada, mas já tinha o motor completo). Etapa 6 completa num
+  só commit (`2f1fcf1`): rota `POST /limite`, schemas e pontos do gráfico.
+  Testada com `pytest` e com o servidor no ar (chamadas reais via curl).
+  Falta o `git push` e, se quiserem, abrir o PR.
 
 Não presuma: rode `git fetch` e confira `git log --oneline --graph --all`.
 
 Ambiente: `backend/.venv` já existe e é ignorado pelo git. Se faltar, rode
 `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` dentro de
 `backend/` (no Ubuntu pode ser preciso `apt install python3.12-venv`). Testes:
-`cd backend && .venv/bin/pytest -q` (hoje: 553 passando, em cerca de 2 min;
-cada limite roda em processo filho e alguns testes esperam o timeout de 3 s).
+`cd backend && .venv/bin/pytest -q` (hoje: 567 passando — 553 do motor
+mais 14 da API —, em cerca de 2 min; cada limite roda em processo filho e
+alguns testes esperam o timeout de 3 s).
 
 **Código em `backend/app/motor/` (fim da Etapa 5):**
 
@@ -292,6 +294,42 @@ a 1e-6 do ponto, e roda em processo com timeout de 3 s; funções que oscilam
 muito perto do ponto podem ser classificadas errado ou ficar sem conclusão
 (de propósito, nunca com valor errado).
 
+**Código da API (`backend/app/`, fim da Etapa 6):**
+
+- `main.py`: instancia o `FastAPI`, CORS (`allow_origins` com portas comuns de
+  dev local — 5500, 5173, 8080, 3000 —, configurável por
+  `ORIGENS_PERMITIDAS` no ambiente; `allow_credentials=False` de propósito,
+  já que o projeto não usa cookies/autenticação) e inclui `rotas/limite.py`.
+  Handlers de exceção garantem que toda resposta de erro (400/422/500) tem
+  sempre o formato `{"erro": "mensagem em português"}`, nunca stack trace.
+- `rotas/limite.py`: `POST /limite`. Chama `ler_funcao`/`ler_ponto` (erros de
+  entrada viram 400 com a mensagem do `ErroEntrada`) e depois `resolver()`.
+  A chamada completa a `resolver()` roda com um teto de 10s
+  (`_resolver_com_timeout`, cópia local de `executar_com_timeout` com
+  `daemon=False` — **nota para quem tocar em `seguro.py`:** não dá para
+  reaproveitar a função original porque ela usa processo daemon, e
+  `resolver()` já cria processos filhos por dentro, via `limite_seguro`; um
+  daemon não pode ter filhos. Se quiserem eliminar essa duplicação, a
+  correção é um parâmetro `daemon: bool = True` em
+  `seguro.py::executar_com_timeout`). Monta a resposta a partir do
+  `Resultado` do motor; valores em texto usam `texto_ponto` do motor (com um
+  ajuste só na API para a constante `E` do SymPy aparecer como `e`
+  minúsculo).
+- `modelos/schemas.py`: o contrato (Pydantic). `EntradaLimite(funcao, ponto)`
+  (strings). `RespostaLimite`: `entrada` (eco), `resolvido` (o motor
+  concluiu?), `existe` (None se `resolvido=False`), `resultado`
+  (`{texto, latex}` ou `None`), `laterais` (`None` se x → ±∞; senão
+  `{esquerda, direita}`, cada um `{texto, latex}` ou `None` se a função não
+  existe nesse lado), `passos` (lista de `{titulo, explicacao, latex}`,
+  sempre com pelo menos 1) e `grafico.pontos` (lista de `{x, y}`, `y: None`
+  fora do domínio real). Erros sempre `{"erro": "..."}` (`RespostaErro`).
+- `grafico/pontos.py`: amostra `f(x)` com `sp.lambdify` (NumPy) — ponto
+  finito: janela `[ponto−5, ponto+5]`; x → +∞: `[−10, 30]`; x → −∞:
+  `[−30, 10]`; 201 pontos (ímpar de propósito, para o próprio ponto cair
+  exatamente na malha em ponto finito). Avaliação do lote inteiro protegida
+  por um único `executar_com_timeout` (5s); NaN, complexo (fora de uma
+  tolerância) e não finito viram `y=None`.
+
 ## 6. Como trabalhar (pedido explícito da dona do projeto)
 
 - **Pouco de cada vez.** Uma etapa por vez, em incrementos pequenos.
@@ -341,11 +379,13 @@ a entrada, se sobrar tempo.
 
 ## 9. Próximo passo
 
-Etapa 5 completa na branch `feature/etapa-5-lhopital-potencias` (falta o
-`git push` e, se quiserem, abrir e mesclar o PR — a orquestradora não faz
-isso sem pedirem). Depois de mesclada, a próxima é a Etapa 6: API (rota
-`POST /limite`, contrato de resposta em `backend/app/modelos/schemas.py`),
-numa branch nova a partir da `main` atualizada. É a primeira etapa que
-aciona o agente `api-backend`; só depois do contrato fechado é que o
-`frontend-web` pode começar a Etapa 7 (ver `CLAUDE.md`, seção "Etapas de API
-e página").
+Etapas 5 e 6 completas, cada uma na sua branch (`feature/etapa-5-lhopital-potencias`
+e `feature/etapa-6-api`, esta criada a partir daquela); falta o `git push` de
+`feature/etapa-6-api` e, se quiserem, abrir e mesclar os PRs — nessa ordem,
+já que uma depende da outra (a orquestradora não faz isso sem pedirem).
+Depois de mescladas, a próxima é a Etapa 7: a página (formulário, passo a
+passo com KaTeX), numa branch nova a partir da `main` atualizada, com o
+agente `frontend-web`, consumindo o contrato já fechado em
+`backend/app/modelos/schemas.py`. A Etapa 8 (gráfico, com os pontos que a
+API já calcula em `backend/app/grafico/pontos.py`) pode ser feita junto ou
+depois, também pelo `frontend-web`.
