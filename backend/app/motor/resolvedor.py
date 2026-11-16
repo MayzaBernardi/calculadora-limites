@@ -10,9 +10,10 @@ from app.motor.laterais import analisar_sinais, calcular_laterais, concluir
 from app.motor.passos import Passo
 from app.motor.seguro import limite_seguro
 from app.motor.tecnicas import (
-    aplicar_limites_fundamentais, aplicar_lhopital, divisao_maior_potencia,
-    fatorar_e_cancelar, intervalo_limitado, limitada_sobre_infinito,
-    racionalizar, termo_dominante,
+    aplicar_limites_fundamentais, aplicar_lhopital, denominador_comum,
+    divisao_maior_potencia, fatorar_e_cancelar, intervalo_limitado,
+    limitada_sobre_infinito, produto_como_quociente, racionalizar,
+    racionalizar_oo_menos_oo, termo_dominante,
 )
 
 PROFUNDIDADE_MAXIMA = 5
@@ -394,5 +395,26 @@ def _resolver(expressao: sp.Expr, ponto: sp.Expr, profundidade: int) -> Resultad
                 expressao, ponto, lhopital.nova, lista, tecnica, profundidade)
             return _ou_laterais(falha, expressao, ponto, lista)
 
-    # As próximas etapas (∞−∞, 0·∞, potências...) entram aqui.
+    if forma == "oo-oo" and profundidade < PROFUNDIDADE_MAXIMA:
+        dc = denominador_comum(expressao, ponto)
+        if dc is not None:
+            tecnica = [passos.passo_denominador_comum(expressao, ponto, dc)]
+            falha = _continuar(expressao, ponto, dc.combinada, lista, tecnica, profundidade)
+            return _ou_laterais(falha, expressao, ponto, lista)
+
+        racionalizacao_oo = racionalizar_oo_menos_oo(expressao, ponto)
+        if racionalizacao_oo is not None:
+            tecnica = [passos.passo_racionalizacao_infinita(expressao, ponto, racionalizacao_oo)]
+            falha = _continuar(
+                expressao, ponto, racionalizacao_oo.nova, lista, tecnica, profundidade)
+            return _ou_laterais(falha, expressao, ponto, lista)
+
+    if forma == "0*oo" and profundidade < PROFUNDIDADE_MAXIMA:
+        pq = produto_como_quociente(expressao, ponto)
+        if pq is not None:
+            tecnica = [passos.passo_produto_como_quociente(expressao, ponto, pq)]
+            falha = _continuar(expressao, ponto, pq.nova, lista, tecnica, profundidade)
+            return _ou_laterais(falha, expressao, ponto, lista)
+
+    # Potências (1^oo, 0^0, oo^0)... entram aqui.
     return _ou_laterais(Resultado(resolvido=False, passos=lista), expressao, ponto, lista)

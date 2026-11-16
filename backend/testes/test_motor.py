@@ -384,6 +384,23 @@ def test_texto_e_latex_dos_passos_de_fatoracao():
     assert r.passos[-2].latex == r"\lim_{x \to 2} \left(x + 2\right) = 2 + 2 = 4"
 
 
+def test_fatoracao_fator_de_grau_2_mesma_forma_na_explicacao_e_no_latex():
+    # Regressão: com raiz repetida, o fator comum (gcd) tem grau 2, e antes da
+    # correção ficava expandido (x**2 - 2*x + 1) na explicação, enquanto o
+    # LaTeX (que vem de sp.factor do numerador/denominador) mostrava a forma
+    # fatorada (x - 1)^2 — texto e fórmula citavam nomes diferentes do mesmo
+    # fator. sp.limit confirma o valor 1/3.
+    r = _resolver("(x^2-2x+1)/(x^3-3x+2)", "1")
+    assert r.resolvido and r.valor == sp.Rational(1, 3)
+    fat = next(p for p in r.passos if p.titulo == "Fatoração")
+    canc = next(p for p in r.passos if p.titulo == "Cancelamento do fator comum")
+    assert "(x - 1)^2" in fat.explicacao
+    assert "x^2 - 2 · x + 1" not in fat.explicacao  # forma expandida (o bug antigo)
+    assert r"\left(x - 1\right)^{2}" in fat.latex
+    assert "(x - 1)^2" in canc.explicacao
+    assert r"\left(x - 1\right)^{2}" in canc.latex
+
+
 def test_validado_none_fora_da_fatoracao():
     assert _resolver("x+1", "2").validado is None
     assert _resolver("|x|/x", "0").validado is None  # laterais, sem conferência extra
@@ -1623,4 +1640,313 @@ def test_sem_indeterminacao_rejeita_raiz_de_oscilacao_sem_cota_positiva(funcao, 
 def test_sem_indeterminacao_aceita_oscilacao_com_cota_positiva(funcao, ponto, esperado):
     r = _resolver(funcao, ponto)
     assert r.resolvido and r.existe and r.valor == esperado
+
+
+# ==================== Etapa 5: ∞−∞ (denominador comum) =======================
+
+from app.motor.tecnicas import denominador_comum  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto, esperado",
+    [
+        # Combina para 1/(x+1): a fatoração (já existente) cancela o fator
+        # comum e resolve a nova forma 0/0.
+        ("1/(x-1) - 2/(x^2-1)", "1", sp.Rational(1, 2)),
+        # Combina para (x*cos(x) - sen(x))/(x*sen(x)), forma 0/0: precisa de
+        # L'Hôpital duas vezes, já implementado; a recursão cuida disso.
+        ("cos(x)/sen(x) - 1/x", "0", 0),
+        # Combina para (sen(x) - x)/(x*sen(x)), forma 0/0.
+        ("1/x - 1/sen(x)", "0", 0),
+        # Combina para (x+1)/(x-1), forma ∞/∞, resolvida por
+        # divisao_maior_potencia (que já faz seu próprio together() e nem
+        # chega a precisar do passo "Denominador comum").
+        ("(x^2+1)/(x-1) - x", "infinito", 1),
+        # Soma de 3 termos (não só 2): 1/ln(1+x) e 1/x divergem, mas a
+        # diferença entre eles converge; a constante 0.5 não participa da
+        # combinação, só desloca o resultado.
+        ("0.5 + 1/ln(1+x) - 1/x", "0", 1),
+        # x -> -infinito (os outros casos de infinito são só +infinito):
+        # combina para (x^3 + (x^2+1)^(3/2))/(x^2+1), forma ∞/∞, que não é
+        # polinomial (tem raiz), então não cai em divisao_maior_potencia;
+        # precisa mesmo do "Denominador comum" seguido de L'Hôpital.
+        ("x^3/(x^2+1) + raiz(x^2+1)", "-infinito", 0),
+    ],
+)
+def test_denominador_comum_resolve(funcao, ponto, esperado):
+    r = _resolver(funcao, ponto)
+    assert r.resolvido and r.existe and r.valor == esperado
     assert sp.limit(ler_funcao(funcao), x, ler_ponto(ponto)) == esperado
+    assert r.passos[-1].titulo == "Resultado"
+    assert all(p.titulo and p.explicacao and p.latex for p in r.passos)
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto",
+    [
+        ("1/(x-1) - 2/(x^2-1)", "1"),
+        ("cos(x)/sen(x) - 1/x", "0"),
+        ("1/x - 1/sen(x)", "0"),
+        ("0.5 + 1/ln(1+x) - 1/x", "0"),
+        ("x^3/(x^2+1) + raiz(x^2+1)", "-infinito"),
+    ],
+)
+def test_denominador_comum_e_realmente_usada(funcao, ponto):
+    # (x^2+1)/(x-1) - x fica de fora: divisao_maior_potencia já junta os
+    # termos por conta própria (seu próprio together()) e resolve antes de a
+    # forma oo-oo chegar a acionar esta técnica.
+    r = _resolver(funcao, ponto)
+    titulos = [p.titulo for p in r.passos]
+    assert "Denominador comum" in titulos
+
+
+@pytest.mark.parametrize(
+    "expressao, ponto",
+    [
+        # Sem fração em nenhum termo: não há "denominador comum" a fazer
+        # (fica para a técnica do conjugado, em outro commit).
+        (x - sp.log(x), sp.oo),
+        (sp.sqrt(x**2 + x) - x, sp.oo),
+        # Sem soma (não é is_Add).
+        (1 / x, sp.Integer(0)),
+        # Soma, mas sem fração nenhuma nos termos.
+        (x + sp.sin(x), sp.oo),
+    ],
+)
+def test_denominador_comum_nao_se_aplica(expressao, ponto):
+    assert denominador_comum(expressao, ponto) is None
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto, esperado",
+    [
+        ("(sen(x)-x)/x^3", "0", sp.Rational(-1, 6)),  # L'Hôpital, não afetada
+        ("(x^2-4)/(x-2)", "2", 4),                     # fatoração, não afetada
+    ],
+)
+def test_denominador_comum_nao_interfere_em_tecnicas_existentes(funcao, ponto, esperado):
+    r = _resolver(funcao, ponto)
+    assert r.resolvido and r.existe and r.valor == esperado
+    titulos = [p.titulo for p in r.passos]
+    assert "Denominador comum" not in titulos
+    assert sp.limit(ler_funcao(funcao), x, ler_ponto(ponto)) == esperado
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto",
+    [
+        # A técnica se aplica (acha fração, combina num único quociente), mas
+        # a nova forma (0/0) não é concluída por nenhuma técnica de 0/0 nem
+        # por L'Hôpital. O motor descarta os passos da tentativa e cai no
+        # fallback de laterais do ponto original, que aqui realmente
+        # divergem: sp.limit(..., dir="-") = -oo e dir="+" = oo.
+        ("1/(x-sen(x)) - 1/x^3", "0"),
+        # Mesmo padrão: dir="-") = oo e dir="+" = -oo.
+        ("1/(e^x-1-x) - 2/x^2", "0"),
+    ],
+)
+def test_denominador_comum_aplica_mas_nao_conclui_cai_em_laterais(funcao, ponto):
+    e, a = ler_funcao(funcao), ler_ponto(ponto)
+    assert identificar_forma(e, a) == "oo-oo"
+    assert denominador_comum(e, a) is not None  # a técnica se aplica
+    assert sp.limit(e, x, a, dir="+") != sp.limit(e, x, a, dir="-")  # laterais divergem de verdade
+
+    r = _resolver(funcao, ponto)
+    assert r.resolvido and r.existe is False and r.valor is None
+    assert r.passos[-1].titulo == "Os laterais são diferentes: o limite não existe"
+
+
+# =============== Etapa 5: ∞−∞ por conjugado (raiz, sem fração) ===============
+
+from app.motor.tecnicas import racionalizar_oo_menos_oo  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto, esperado",
+    [
+        # Clássico: a raiz se comporta como x para x bem positivo; o
+        # conjugado troca a disputa de infinitos por um quociente ∞/∞, que
+        # a Regra de L'Hôpital (já implementada) resolve.
+        ("raiz(x^2+x)-x", "infinito", sp.Rational(1, 2)),
+        # Mesma função, mas em -infinito: aqui raiz(x²+x) se comporta como
+        # -x (e não como x), então os dois termos vão para +infinito e nem
+        # formam ∞−∞; resolvido direto por "sem indeterminação", sem
+        # precisar da técnica do conjugado (o valor muda de um lado para
+        # o outro, por isso vale confirmar os dois separadamente).
+        ("raiz(x^2+x)-x", "-infinito", sp.oo),
+        # Depois do conjugado, vira 1/(raiz(x+1)+raiz(x)): resolvida pela
+        # técnica de função limitada sobre infinito, sem precisar de
+        # L'Hôpital.
+        ("raiz(x+1)-raiz(x)", "infinito", 0),
+        ("raiz(x^2+1)-raiz(x^2-1)", "infinito", 0),
+        # De novo precisa de L'Hôpital depois do conjugado.
+        ("raiz(x^2+x+1)-x", "infinito", sp.Rational(1, 2)),
+    ],
+)
+def test_racionalizar_oo_menos_oo_resolve(funcao, ponto, esperado):
+    r = _resolver(funcao, ponto)
+    assert r.resolvido and r.existe and r.valor == esperado
+    assert sp.limit(ler_funcao(funcao), x, ler_ponto(ponto)) == esperado
+    assert r.passos[-1].titulo == "Resultado"
+    assert all(p.titulo and p.explicacao and p.latex for p in r.passos)
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto",
+    [
+        ("raiz(x^2+x)-x", "infinito"),
+        ("raiz(x+1)-raiz(x)", "infinito"),
+        ("raiz(x^2+1)-raiz(x^2-1)", "infinito"),
+        ("raiz(x^2+x+1)-x", "infinito"),
+    ],
+)
+def test_racionalizar_oo_menos_oo_e_realmente_usada(funcao, ponto):
+    # Em -infinito (acima) não aparece: já resolve por "sem indeterminação"
+    # antes de a forma oo-oo acionar esta técnica.
+    r = _resolver(funcao, ponto)
+    titulos = [p.titulo for p in r.passos]
+    assert "Conjugado (∞ − ∞)" in titulos
+
+
+@pytest.mark.parametrize(
+    "expressao, ponto",
+    [
+        # Sem raiz: não há por que fazer essa conta (é caso de
+        # denominador_comum ou termo_dominante, não desta técnica).
+        (x - sp.log(x), sp.oo),
+        # Soma de 3 termos (não 2): fora de escopo, só par a par.
+        (sp.sqrt(x) + sp.sqrt(x + 1) - sp.sqrt(x + 2), sp.oo),
+        # Caso de denominador_comum (tem fração, não tem raiz, ponto
+        # finito): o ponto finito já basta para recusar.
+        (1 / (x - 1) - 2 / (x**2 - 1), sp.Integer(1)),
+    ],
+)
+def test_racionalizar_oo_menos_oo_nao_se_aplica(expressao, ponto):
+    assert racionalizar_oo_menos_oo(expressao, ponto) is None
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto, esperado",
+    [
+        # Regressão: um caso já resolvido por denominador_comum e outro só
+        # com L'Hôpital continuam resolvendo como antes, sem a técnica nova.
+        ("1/(x-1) - 2/(x^2-1)", "1", sp.Rational(1, 2)),
+        ("(sen(x)-x)/x^3", "0", sp.Rational(-1, 6)),
+    ],
+)
+def test_racionalizar_oo_menos_oo_nao_interfere_em_tecnicas_existentes(
+    funcao, ponto, esperado
+):
+    r = _resolver(funcao, ponto)
+    assert r.resolvido and r.existe and r.valor == esperado
+    titulos = [p.titulo for p in r.passos]
+    assert "Conjugado (∞ − ∞)" not in titulos
+    assert sp.limit(ler_funcao(funcao), x, ler_ponto(ponto)) == esperado
+
+
+# ======================= Etapa 5: 0 · ∞ (produto como quociente) =============
+
+from app.motor.tecnicas import produto_como_quociente  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto, esperado",
+    [
+        # Só existe para x > 0 (ln exige argumento positivo); depois de
+        # reescrito como quociente, a Regra de L'Hôpital resolve a forma 0/0,
+        # mas sobra um produto de 3 fatores que esta técnica não cobre de
+        # novo, então o fecho é pelos laterais (lado único).
+        ("x*ln(x)", "0", 0),
+        # Ambos os lados existem e dão o mesmo valor; depois do quociente,
+        # L'Hôpital resolve tanto 0/0 quanto, na sequência, ∞/∞.
+        ("(pi/2-x)*tg(x)", "pi/2", 1),
+        # sen(x) só é positivo à direita de 0 (ln exige argumento positivo);
+        # resolve em cadeia por limite fundamental e, depois, L'Hôpital.
+        ("sen(x)*ln(sen(x))", "0", 0),
+        # x → +infinito: forma 0 · ∞ "pura" (não é fração, então nem
+        # divisao_maior_potencia nem limitada_sobre_infinito se aplicam).
+        # Depois do quociente, o limite fundamental sen(u)/u resolve direto.
+        ("x*sen(1/x)", "infinito", 1),
+        # Mesma função, agora x → -infinito: mesmo valor, mesmo caminho.
+        ("x*sen(1/x)", "-infinito", 1),
+    ],
+)
+def test_produto_como_quociente_resolve(funcao, ponto, esperado):
+    r = _resolver(funcao, ponto)
+    assert r.resolvido and r.existe and r.valor == esperado
+    assert sp.limit(ler_funcao(funcao), x, ler_ponto(ponto)) == esperado
+    assert r.passos[-1].titulo == "Resultado"
+    assert all(p.titulo and p.explicacao and p.latex for p in r.passos)
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto",
+    [
+        ("x*ln(x)", "0"),
+        ("(pi/2-x)*tg(x)", "pi/2"),
+        ("sen(x)*ln(sen(x))", "0"),
+        ("x*sen(1/x)", "infinito"),
+        ("x*sen(1/x)", "-infinito"),
+    ],
+)
+def test_produto_como_quociente_e_realmente_usada(funcao, ponto):
+    r = _resolver(funcao, ponto)
+    titulos = [p.titulo for p in r.passos]
+    assert "Produto como quociente" in titulos
+
+
+@pytest.mark.parametrize(
+    "expressao, ponto",
+    [
+        # Produto de 3 fatores: fora de escopo (só 2 fatores).
+        (x * sp.log(x) * sp.sin(x), sp.Integer(0)),
+        # 0 · 0, não 0 · ∞: nenhum fator tende a infinito.
+        (x * sp.sin(x), sp.Integer(0)),
+        # ∞ − ∞ (soma, não produto): nem chega a ser Mul de 2 fatores.
+        (1 / (x - 1) - 2 / (x**2 - 1), sp.Integer(1)),
+        # Produto de 2 fatores, mas nenhum deles tende a infinito: (x+1) ->
+        # 1 (finito, não nulo) e sen(x) -> 0; é uma substituição direta
+        # comum, não uma forma 0 · ∞.
+        ((x + 1) * sp.sin(x), sp.Integer(0)),
+    ],
+)
+def test_produto_como_quociente_nao_se_aplica(expressao, ponto):
+    assert produto_como_quociente(expressao, ponto) is None
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto, esperado",
+    [
+        # Regressão: fatoração, L'Hôpital puro, denominador comum e
+        # conjugado (∞ − ∞) continuam resolvendo como antes, sem a técnica
+        # nova (nenhum destes é uma forma 0 · ∞).
+        ("(x^2-4)/(x-2)", "2", 4),
+        ("(sen(x)-x)/x^3", "0", sp.Rational(-1, 6)),
+        ("1/(x-1) - 2/(x^2-1)", "1", sp.Rational(1, 2)),
+        ("raiz(x^2+x)-x", "infinito", sp.Rational(1, 2)),
+    ],
+)
+def test_produto_como_quociente_nao_interfere_em_tecnicas_existentes(
+    funcao, ponto, esperado
+):
+    r = _resolver(funcao, ponto)
+    assert r.resolvido and r.existe and r.valor == esperado
+    titulos = [p.titulo for p in r.passos]
+    assert "Produto como quociente" not in titulos
+    assert sp.limit(ler_funcao(funcao), x, ler_ponto(ponto)) == esperado
+
+
+def test_produto_como_quociente_rejeita_quando_sympy_ja_reescreve_como_fracao():
+    """x*e^(-x) em +infinito "parece" 0 · ∞ (x -> ∞, e^(-x) -> 0), mas o
+    SymPy já representa e^(-x) como 1/e^x, então a forma real identificada é
+    ∞/∞, não 0 · ∞; a checagem defensiva da técnica rejeita o caso. O motor
+    ainda resolve, só que por outro caminho (L'Hôpital seguido de função
+    limitada sobre infinito), sem usar "Produto como quociente"."""
+    funcao, ponto = "x*e^(-x)", "infinito"
+    expressao, p = ler_funcao(funcao), ler_ponto(ponto)
+    assert sp.limit(expressao, x, p) == 0
+    assert produto_como_quociente(expressao, p) is None
+    r = _resolver(funcao, ponto)
+    assert r.resolvido and r.existe and r.valor == 0
+    titulos = [passo.titulo for passo in r.passos]
+    assert "Produto como quociente" not in titulos

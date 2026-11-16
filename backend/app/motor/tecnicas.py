@@ -19,6 +19,17 @@ class Fatoracao:
     simplificada: sp.Expr       # expressão depois do cancelamento
 
 
+def _fator_monico_fatorado(polinomio: sp.Expr) -> sp.Expr:
+    """Forma mônica (coeficiente líder 1) de `polinomio`, mas mantendo cada
+    fator irredutível fatorado (ex.: (x - 1)**2, não x**2 - 2*x + 1). Chamar
+    sp.factor direto no mônico às vezes expande fração para fora (ex.: com
+    coeficientes racionais, (2*x - 1)/2 em vez de x - 1/2); aqui tornamos cada
+    fator da fatoração mônico individualmente, o que evita isso."""
+    _, fatores = sp.factor_list(polinomio)
+    partes = [sp.Poly(f, x).monic().as_expr() ** mult for f, mult in fatores]
+    return sp.Mul(*partes) if partes else sp.Integer(1)
+
+
 def fatorar_e_cancelar(expressao: sp.Expr, ponto: sp.Expr) -> Fatoracao | None:
     """Fatora numerador e denominador de uma função racional e cancela o fator
     comum que se anula em `ponto`. Devolve None se a técnica não se aplica."""
@@ -42,8 +53,9 @@ def fatorar_e_cancelar(expressao: sp.Expr, ponto: sp.Expr) -> Fatoracao | None:
     simplificada = sp.cancel(sp.Mul(num_fat, 1 / den_fat, evaluate=False))
     if simplificada == expressao:
         return None
-    # Fator mônico (x - 2 em vez de 2x - 4), mais legível no passo a passo.
-    fator = sp.Poly(comum, x).monic().as_expr()
+    # Fator mônico (x - 2 em vez de 2x - 4) e fatorado (ex.: (x - 1)**2 em vez
+    # de x**2 - 2*x + 1), para bater com a forma exibida em num_fat/den_fat.
+    fator = _fator_monico_fatorado(comum)
     return Fatoracao(num_fat, den_fat, fator, simplificada)
 
 
@@ -350,6 +362,135 @@ def limitada_sobre_infinito(
         return None
     cota = sp.Max(sp.Abs(minimo), sp.Abs(maximo))
     return LimitadaSobreInfinito(numerador, denominador, minimo, maximo, cota, valor_h)
+
+
+@dataclass
+class DenominadorComum:
+    termos: list[sp.Expr]     # parcelas originais da soma/diferença
+    combinada: sp.Expr        # a mesma expressão, como uma única fração
+    numerador: sp.Expr
+    denominador: sp.Expr
+
+
+def denominador_comum(expressao: sp.Expr, ponto: sp.Expr) -> DenominadorComum | None:
+    """∞ − ∞: reescreve a soma/diferença de termos como uma única fração
+    (mesmo denominador). Isso troca a disputa entre dois infinitos de sinais
+    opostos por uma nova forma (0/0, k/0 ou ∞/∞), que o resolvedor já sabe
+    tratar recursivamente (fatoração, racionalização, limites fundamentais ou
+    L'Hôpital). Devolve None se não há fração em nenhum termo (por exemplo,
+    x - ln(x) ou sqrt(x²+x) - x, que ficam para a técnica do conjugado) ou se
+    juntar os termos não mudou nada."""
+    if not expressao.is_Add or sp.count_ops(expressao) > 100:
+        return None
+    termos = list(expressao.args)
+    if not any(sp.fraction(termo)[1] != 1 for termo in termos):
+        return None
+    combinada = sp.together(expressao)
+    if combinada == expressao:
+        return None
+    numerador, denominador = sp.fraction(combinada)
+    if denominador == 1:
+        return None
+    return DenominadorComum(termos, combinada, numerador, denominador)
+
+
+@dataclass
+class RacionalizacaoInfinita:
+    termo1: sp.Expr               # 1ª parcela da soma (Add tem exatamente 2 termos)
+    termo2: sp.Expr               # 2ª parcela
+    conjugado: sp.Expr            # termo1 - termo2
+    diferenca_quadrados: sp.Expr  # expand(termo1**2 - termo2**2), sem raiz
+    nova: sp.Expr                 # diferenca_quadrados / conjugado
+
+
+def racionalizar_oo_menos_oo(
+    expressao: sp.Expr, ponto: sp.Expr
+) -> RacionalizacaoInfinita | None:
+    """∞ − ∞ com raiz quadrada e sem fração nenhuma (por isso denominador_comum
+    não se aplica, como em sqrt(x²+x) − x): multiplicamos e dividimos pelo
+    conjugado termo1 − termo2. Como (termo1+termo2)(termo1−termo2) =
+    termo1² − termo2², a diferença de quadrados costuma cancelar a raiz que
+    causava a disputa entre os dois infinitos; a nova expressão (um
+    quociente) é algebricamente igual à original, mas numa forma (∞/∞, ou já
+    sem indeterminação) que o resolvedor sabe tratar recursivamente. Só para
+    x -> +oo ou -oo (em ponto finito fica fora de escopo) e só para soma de
+    exatamente 2 termos (3 termos ou mais fica fora de escopo). Devolve None
+    se a técnica não se aplica."""
+    if ponto not in (sp.oo, -sp.oo) or sp.count_ops(expressao) > 100:
+        return None
+    if not expressao.is_Add or len(expressao.args) != 2:
+        return None
+    termo1, termo2 = expressao.args
+    if not (_tem_raiz(termo1) or _tem_raiz(termo2)):
+        return None
+    conjugado = termo1 - termo2
+    if conjugado == 0:
+        return None
+    diferenca_quadrados = sp.expand(termo1**2 - termo2**2)
+    if _tem_raiz(diferenca_quadrados):
+        return None
+    nova = diferenca_quadrados / conjugado
+    if nova == expressao:
+        return None
+    return RacionalizacaoInfinita(termo1, termo2, conjugado, diferenca_quadrados, nova)
+
+
+@dataclass
+class ProdutoComoQuociente:
+    fator_zero: sp.Expr      # fator cujo limite é 0
+    fator_infinito: sp.Expr  # fator cujo limite é oo ou -oo
+    nova: sp.Expr            # fator_zero / (1/fator_infinito), sem auto-simplificar
+
+
+def produto_como_quociente(
+    expressao: sp.Expr, ponto: sp.Expr
+) -> ProdutoComoQuociente | None:
+    """0 · ∞: reescreve o produto fator_zero · fator_infinito como o quociente
+    fator_zero / (1/fator_infinito). Como 1/fator_infinito -> 0 (pois
+    fator_infinito -> ±∞), a nova expressão fica na forma 0/0 — o mesmo
+    valor da original, mas em uma estrutura de fração que o resolvedor já
+    sabe tratar recursivamente (fatoração, racionalização, limites
+    fundamentais ou L'Hôpital). Só para produto de exatamente 2 fatores
+    (`expressao.is_Mul` com `len(expressao.args) == 2`); produtos de 3 ou
+    mais fatores ficam fora de escopo. Devolve None se a técnica não se
+    aplica."""
+    if not expressao.is_Mul or len(expressao.args) != 2:
+        return None
+    if sp.count_ops(expressao) > 100:
+        return None
+    fator1, fator2 = expressao.args
+    lados = lados_definidos(expressao, ponto) if ponto.is_finite else [None]
+    if not lados:
+        return None
+    papel = None  # (fator_zero, fator_infinito), precisa ser o mesmo em todo lado
+    for lado in lados:
+        limite1 = limite_da_parte(fator1, ponto, lado)
+        limite2 = limite_da_parte(fator2, ponto, lado)
+        if limite1 is None or limite2 is None:
+            return None
+        if limite1 == 0 and limite2 in (sp.oo, -sp.oo):
+            papel_lado = (fator1, fator2)
+        elif limite2 == 0 and limite1 in (sp.oo, -sp.oo):
+            papel_lado = (fator2, fator1)
+        else:
+            return None
+        if papel is None:
+            papel = papel_lado
+        elif papel != papel_lado:
+            return None
+    fator_zero, fator_infinito = papel
+
+    # Duas camadas de evaluate=False: sem isso o SymPy desfaz a divisão de
+    # volta para fator_zero * fator_infinito (perdendo a estrutura de fração).
+    inverso = 1 / fator_infinito
+    denominador = sp.Pow(inverso, -1, evaluate=False)
+    nova = sp.Mul(fator_zero, denominador, evaluate=False)
+    if nova == expressao:
+        return None
+    numerador_nova, denominador_nova = sp.fraction(nova)
+    if numerador_nova != fator_zero or denominador_nova == 1:
+        return None
+    return ProdutoComoQuociente(fator_zero, fator_infinito, nova)
 
 
 @dataclass

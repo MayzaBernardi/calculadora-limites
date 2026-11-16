@@ -390,6 +390,93 @@ def passo_produto_de_limites(expressao: sp.Expr, ponto: sp.Expr, f) -> Passo:
     )
 
 
+def passo_denominador_comum(expressao: sp.Expr, ponto: sp.Expr, d) -> Passo:
+    """d: DenominadorComum (ver tecnicas.py)."""
+    return Passo(
+        titulo="Denominador comum",
+        explicacao=(
+            "A forma é ∞ − ∞: os termos tendem a infinitos de sinais opostos, "
+            "e a substituição direta não decide sozinha qual dos dois domina. "
+            "Para resolver, reescrevemos a soma (ou diferença) de termos como "
+            "uma única fração, com o mesmo denominador. Assim, a disputa entre "
+            "dois infinitos vira uma forma nova (0/0, k/0 ou ∞/∞), que já "
+            "sabemos tratar."
+        ),
+        latex=(
+            f"{limite_tex(expressao, ponto)} = "
+            rf"\lim_{{x \to {tex(ponto)}}} \frac{{{tex(d.numerador)}}}{{{tex(d.denominador)}}}"
+        ),
+    )
+
+
+def passo_produto_como_quociente(expressao: sp.Expr, ponto: sp.Expr, d) -> Passo:
+    """d: ProdutoComoQuociente (ver tecnicas.py)."""
+    inverso_tex = rf"\frac{{1}}{{{tex(d.fator_infinito)}}}"
+
+    def _com_parenteses_texto(expr: sp.Expr) -> str:
+        # Parênteses no texto quando a parte é uma soma (ex.: pi/2 - x), para
+        # não ficar ambíguo como "1/pi/2 - x" em vez de "1/(pi/2 - x)".
+        texto = _texto_expr(expr)
+        if expr.is_Atom or expr.is_Function:
+            return texto
+        return f"({texto})"
+
+    infinito_txt = _texto_expr(d.fator_infinito)
+    zero_txt = _com_parenteses_texto(d.fator_zero)
+    inverso_txt = f"1/{_com_parenteses_texto(d.fator_infinito)}"
+    return Passo(
+        titulo="Produto como quociente",
+        explicacao=(
+            "A forma é 0 · ∞: um fator tende a 0 e o outro cresce sem limite "
+            "em módulo, e a substituição direta não decide sozinha o "
+            f"resultado. O fator {infinito_txt} tende a infinito. Dividir "
+            f"por {inverso_txt} é o mesmo que multiplicar por {infinito_txt} "
+            "(são inversos um do outro), então podemos escrever o produto "
+            f"{zero_txt} · {infinito_txt} como o quociente "
+            f"{zero_txt} / ({inverso_txt}), sem mudar o valor. Como "
+            f"{inverso_txt} tende a 0, a disputa entre zero e infinito vira "
+            "a forma 0/0, que já sabemos tratar."
+        ),
+        latex=(
+            f"{limite_tex(expressao, ponto)} = "
+            rf"\lim_{{x \to {tex(ponto)}}} \frac{{{tex(d.fator_zero)}}}{{{inverso_tex}}}"
+        ),
+    )
+
+
+def passo_racionalizacao_infinita(expressao: sp.Expr, ponto: sp.Expr, d) -> Passo:
+    """d: RacionalizacaoInfinita (ver tecnicas.py). Cobre ∞ − ∞ com raiz e sem
+    fração nenhuma (quando denominador_comum não se aplica)."""
+    identidade = (
+        rf"\left({tex_ordenado(expressao)}\right)\left({tex(d.conjugado)}\right) = "
+        rf"{_com_parenteses(d.termo1)}^{{2}} - {_com_parenteses(d.termo2)}^{{2}}"
+        rf" = {_com_parenteses(d.termo1**2)} - {_com_parenteses(d.termo2**2)}"
+        rf" = {tex(d.diferenca_quadrados)}"
+    )
+    latex = (
+        rf"\begin{{gathered}} {limite_tex(expressao, ponto)}"
+        rf" \\ {identidade}"
+        rf" \\ {limite_tex(expressao, ponto)} = {limite_tex(d.nova, ponto)} \end{{gathered}}"
+    )
+    return Passo(
+        titulo="Conjugado (∞ − ∞)",
+        explicacao=(
+            "A forma é ∞ − ∞, e aqui aparece uma raiz, sem nenhuma fração para "
+            "reunir em um só denominador (por isso a técnica do denominador "
+            f"comum não ajuda neste caso). Multiplicamos e dividimos por "
+            f"{_texto_expr(d.conjugado)}, o conjugado de {_texto_expr(expressao)}: "
+            "a mesma soma, com o sinal entre os dois termos trocado. Isso não "
+            "muda o valor da expressão, pois é o mesmo que multiplicar por 1. "
+            "Pelo produto notável (a + b)(a − b) = a² − b², elevar cada termo "
+            "ao quadrado desfaz a raiz quadrada; o que sobra, "
+            f"{_texto_expr(d.diferenca_quadrados)}, já não tem raiz nenhuma. "
+            "Assim, a disputa entre os dois infinitos vira uma forma nova, "
+            "dividida pelo próprio conjugado."
+        ),
+        latex=latex,
+    )
+
+
 def passo_lhopital(expressao: sp.Expr, ponto: sp.Expr, forma: str, d) -> Passo:
     """d: LHopital (ver tecnicas.py). forma: "0/0" ou "oo/oo"."""
     forma_tex = r"\frac{0}{0}" if forma == "0/0" else r"\frac{\infty}{\infty}"
