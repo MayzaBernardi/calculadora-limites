@@ -90,7 +90,7 @@ calculadora-limites/
 4. Limites no infinito — **FEITA**
 5. L'Hôpital, ∞−∞, 0·∞ e indeterminações com potência — **FEITA**
 6. API (rota `/limite`) — **FEITA**
-7. Página (formulário e passo a passo)
+7. Página (formulário e passo a passo) — **FEITA, falta confirmar visualmente num navegador**
 8. Gráfico
 9. Testes de todos os tipos e revisão das explicações
 
@@ -122,11 +122,19 @@ Situação das branches no GitHub:
   apagar os remotos quando quiserem.
 - `feature/etapa-5-lhopital-potencias`: Etapa 5 completa nela (último commit
   `3c353b7`), com push feito; a dona do projeto vai abrir e mesclar o PR.
-- `feature/etapa-6-api`: criada a partir da `feature/etapa-5-lhopital-potencias`
-  (ainda não mesclada, mas já tinha o motor completo). Etapa 6 completa num
-  só commit (`2f1fcf1`): rota `POST /limite`, schemas e pontos do gráfico.
-  Testada com `pytest` e com o servidor no ar (chamadas reais via curl).
-  Falta o `git push` e, se quiserem, abrir o PR.
+- `feature/etapa-6-api`: Etapa 6 completa e mesclada na `main` via PR #15
+  (`8453c83`), junto com a Etapa 5 via PR #14 (`7034480`).
+- `feature/etapa-7-pagina`: criada a partir da `main` atualizada (já com as
+  Etapas 5 e 6). Etapa 7 completa num só commit (`2d70d68`): `frontend/`
+  (antes vazia) com `index.html`, `estilo.css`, `js/api.js` e `js/passos.js`.
+  Testada com os dois servidores no ar (`uvicorn` + `python3 -m http.server`)
+  e chamadas reais via curl reproduzindo o `fetch` do frontend, para os 5
+  estados da resposta. **Falta confirmar visualmente num navegador** — nem
+  o `frontend-web` nem a orquestradora tiveram ferramenta de navegador
+  nesta sessão; quem continuar deveria abrir a página de verdade (`cd
+  frontend && python3 -m http.server 5500`, com o backend no ar em
+  `:8000`) antes de dar a Etapa 7 por definitivamente concluída. Falta o
+  `git push` e, se quiserem, abrir o PR.
 
 Não presuma: rode `git fetch` e confira `git log --oneline --graph --all`.
 
@@ -330,6 +338,42 @@ muito perto do ponto podem ser classificadas errado ou ficar sem conclusão
   por um único `executar_com_timeout` (5s); NaN, complexo (fora de uma
   tolerância) e não finito viram `y=None`.
 
+**Código da página (`frontend/`, fim da Etapa 7, sem o gráfico ainda):**
+
+- `index.html`: formulário com `campo-funcao` e `campo-ponto` (`novalidate`
+  de propósito — a validação de campo vazio/inválido é só da API, que já
+  devolve mensagem em português, em vez da bolha nativa do navegador),
+  `indicador-carregando`, `area-erro` (`role="alert"`) e `area-resultado`
+  (`aria-live="polite"`). KaTeX 0.16.9 via CDN (jsdelivr), com `integrity`
+  (SRI) travado — recalculado e confirmado pela orquestradora, não só
+  copiado do agente.
+- `js/api.js`: `calcularLimite(funcao, ponto)` chama `POST /limite` (URL
+  numa única constante `API_URL`, hoje `http://127.0.0.1:8000`) e lança
+  `Error` com mensagem em português pronta para exibir — tanto para erro da
+  API (lê `corpo.erro`) quanto para falha de rede (backend fora do ar).
+- `js/passos.js`: trata os 3 estados do contrato
+  (`resolvido=false` → "Não conseguimos concluir este limite";
+  `existe=false` → "O limite não existe"; `existe=true` → mostra
+  `resultado.latex`), a seção de laterais (omitida se `laterais` for
+  `null`, isto é, ponto infinito; cada lado "Não definido nesse lado." se
+  vier `null`) e a lista de passos, cada fórmula via
+  `katex.render(latex, elemento, {throwOnError: false})`. Todo texto da API
+  entra com `textContent` (nunca `innerHTML`) — só o `latex` de cada item
+  chega ao KaTeX. Ignora de propósito o campo `grafico` da resposta (Etapa
+  8, ainda não feita); `frontend/js/grafico.js` ainda não existe.
+- Verificado (pela orquestradora, não só pelo agente): os dois servidores
+  no ar (`cd backend && .venv/bin/uvicorn app.main:app --port 8000` e `cd
+  frontend && python3 -m http.server 5500`, porta liberada no CORS) e
+  chamadas reais via curl reproduzindo o `fetch` do frontend, para os 5
+  estados de resposta (existe, não existe, ponto infinito, não resolvido,
+  entrada inválida) e campo vazio — todos bateram com o que o JS trata.
+  Hashes SRI do KaTeX recalculados com `openssl dgst -sha384` e conferidos
+  contra o HTML. **Não verificado: a renderização visual de verdade** (CSS
+  aplicado, KaTeX desenhando as fórmulas na tela, responsividade) — nem o
+  `frontend-web` nem a orquestradora tiveram uma ferramenta de navegador
+  disponível nesta sessão. Quem continuar deveria abrir a página de
+  verdade antes de considerar a Etapa 7 definitivamente fechada.
+
 ## 6. Como trabalhar (pedido explícito da dona do projeto)
 
 - **Pouco de cada vez.** Uma etapa por vez, em incrementos pequenos.
@@ -379,13 +423,17 @@ a entrada, se sobrar tempo.
 
 ## 9. Próximo passo
 
-Etapas 5 e 6 completas, cada uma na sua branch (`feature/etapa-5-lhopital-potencias`
-e `feature/etapa-6-api`, esta criada a partir daquela); falta o `git push` de
-`feature/etapa-6-api` e, se quiserem, abrir e mesclar os PRs — nessa ordem,
-já que uma depende da outra (a orquestradora não faz isso sem pedirem).
-Depois de mescladas, a próxima é a Etapa 7: a página (formulário, passo a
-passo com KaTeX), numa branch nova a partir da `main` atualizada, com o
-agente `frontend-web`, consumindo o contrato já fechado em
-`backend/app/modelos/schemas.py`. A Etapa 8 (gráfico, com os pontos que a
-API já calcula em `backend/app/grafico/pontos.py`) pode ser feita junto ou
-depois, também pelo `frontend-web`.
+Etapas 5 e 6 já mescladas na `main` (PRs #14 e #15). A Etapa 7 está completa
+na branch `feature/etapa-7-pagina` (commit `2d70d68`); falta o `git push` e,
+se quiserem, abrir o PR. **Antes de seguir para a Etapa 8, vale abrir a
+página de verdade num navegador** (`cd backend && .venv/bin/uvicorn
+app.main:app --port 8000`, e `cd frontend && python3 -m http.server 5500`,
+depois `http://127.0.0.1:5500`) — nem o `frontend-web` nem a orquestradora
+tiveram ferramenta de navegador nesta sessão, então a confirmação visual
+(CSS, fórmulas do KaTeX, responsividade) ainda está pendente, mesmo com a
+lógica já conferida via curl para os 5 estados da resposta. Depois disso, a
+Etapa 8 é o gráfico (os pontos já vêm prontos em `grafico.pontos` da API;
+falta só desenhar — `frontend/js/grafico.js`, com alguma biblioteca de
+gráficos leve, ex. Chart.js ou function-plot, incluída via CDN como o
+KaTeX), com o `frontend-web`, numa branch nova a partir da
+`feature/etapa-7-pagina` (ou da `main`, se ela já tiver sido mesclada).
