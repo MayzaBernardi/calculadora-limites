@@ -21,17 +21,43 @@ Os limites laterais são calculados automaticamente.
 ## Tecnologias
 
 - **Backend:** Python, SymPy, FastAPI, Uvicorn, Pydantic, NumPy, pytest.
-- **Frontend:** HTML, CSS, JavaScript, KaTeX e uma biblioteca de gráficos.
+- **Frontend:** HTML, CSS e JavaScript puros, KaTeX (fórmulas) e Chart.js
+  (gráfico), os dois via CDN — sem build step.
 
-## Como rodar o backend
+## Como rodar o backend (motor e testes)
 
 ```bash
 cd backend
-python3 -m venv .venv
+python3 -m venv .venv            # se ainda não existir
 source .venv/bin/activate
 pip install -r requirements.txt
 pytest
 ```
+
+## Como rodar a aplicação (API + página)
+
+Dois processos, em terminais separados.
+
+**1. API**, a partir de `backend/` (com o ambiente virtual já criado):
+
+```bash
+cd backend
+.venv/bin/uvicorn app.main:app --port 8000
+```
+
+**2. Página**, a partir de `frontend/`:
+
+```bash
+cd frontend
+python3 -m http.server 5500
+```
+
+Depois, abra `http://127.0.0.1:5500` no navegador. A porta 5500 (e também
+5173, 8080 e 3000, em `localhost` ou `127.0.0.1`) já vem liberada no CORS da
+API por padrão; para usar outra porta, defina a variável de ambiente
+`ORIGENS_PERMITIDAS` (lista separada por vírgula) antes de iniciar o
+`uvicorn`. Se a API rodar em outro host/porta, ajuste a constante
+`API_URL` no topo de `frontend/js/api.js`.
 
 ## Etapas de desenvolvimento
 
