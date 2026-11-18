@@ -91,7 +91,7 @@ calculadora-limites/
 5. L'Hôpital, ∞−∞, 0·∞ e indeterminações com potência — **FEITA**
 6. API (rota `/limite`) — **FEITA**
 7. Página (formulário e passo a passo) — **FEITA, falta confirmar visualmente num navegador**
-8. Gráfico
+8. Gráfico — **FEITA, falta confirmar visualmente num navegador**
 9. Testes de todos os tipos e revisão das explicações
 
 ## 5. Estado atual
@@ -120,21 +120,16 @@ Situação das branches no GitHub:
 - `feature/etapa-2-zero-sobre-zero`, `feature/etapa-3-laterais-k-sobre-zero` e
   `feature/etapa-4-limites-no-infinito`: já mescladas na `main`; só falta
   apagar os remotos quando quiserem.
-- `feature/etapa-5-lhopital-potencias`: Etapa 5 completa nela (último commit
-  `3c353b7`), com push feito; a dona do projeto vai abrir e mesclar o PR.
-- `feature/etapa-6-api`: Etapa 6 completa e mesclada na `main` via PR #15
-  (`8453c83`), junto com a Etapa 5 via PR #14 (`7034480`).
-- `feature/etapa-7-pagina`: criada a partir da `main` atualizada (já com as
-  Etapas 5 e 6). Etapa 7 completa num só commit (`2d70d68`): `frontend/`
-  (antes vazia) com `index.html`, `estilo.css`, `js/api.js` e `js/passos.js`.
-  Testada com os dois servidores no ar (`uvicorn` + `python3 -m http.server`)
-  e chamadas reais via curl reproduzindo o `fetch` do frontend, para os 5
-  estados da resposta. **Falta confirmar visualmente num navegador** — nem
-  o `frontend-web` nem a orquestradora tiveram ferramenta de navegador
-  nesta sessão; quem continuar deveria abrir a página de verdade (`cd
-  frontend && python3 -m http.server 5500`, com o backend no ar em
-  `:8000`) antes de dar a Etapa 7 por definitivamente concluída. Falta o
-  `git push` e, se quiserem, abrir o PR.
+- `feature/etapa-6-api` e `feature/etapa-7-pagina`: Etapas 5, 6 e 7 já
+  mescladas na `main` via PRs #14, #15 e #16.
+- `feature/etapa-8-grafico`: criada a partir da `main` atualizada (já com
+  as Etapas 5 a 7). Etapa 8 completa em dois commits: `9be3f7d` (extensão
+  do contrato da API — `ponto_grafico`/`valor_grafico`, pelo `api-backend`)
+  e `a93e562` (o gráfico de verdade, com Chart.js, pelo `frontend-web`).
+  Testada com os dois servidores no ar e chamadas reais via curl (contrato
+  e lógica de quando desenhar o marcador). **Falta confirmar visualmente
+  num navegador** (igual à Etapa 7 — nenhuma sessão teve ferramenta de
+  navegador até agora). Falta o `git push` e, se quiserem, abrir o PR.
 
 Não presuma: rode `git fetch` e confira `git log --oneline --graph --all`.
 
@@ -302,7 +297,7 @@ a 1e-6 do ponto, e roda em processo com timeout de 3 s; funções que oscilam
 muito perto do ponto podem ser classificadas errado ou ficar sem conclusão
 (de propósito, nunca com valor errado).
 
-**Código da API (`backend/app/`, fim da Etapa 6):**
+**Código da API (`backend/app/`, fim da Etapa 8):**
 
 - `main.py`: instancia o `FastAPI`, CORS (`allow_origins` com portas comuns de
   dev local — 5500, 5173, 8080, 3000 —, configurável por
@@ -329,8 +324,14 @@ muito perto do ponto podem ser classificadas errado ou ficar sem conclusão
   (`{texto, latex}` ou `None`), `laterais` (`None` se x → ±∞; senão
   `{esquerda, direita}`, cada um `{texto, latex}` ou `None` se a função não
   existe nesse lado), `passos` (lista de `{titulo, explicacao, latex}`,
-  sempre com pelo menos 1) e `grafico.pontos` (lista de `{x, y}`, `y: None`
-  fora do domínio real). Erros sempre `{"erro": "..."}` (`RespostaErro`).
+  sempre com pelo menos 1), `grafico.pontos` (lista de `{x, y}`, `y: None`
+  fora do domínio real), `ponto_grafico` (Etapa 8: o x pedido como `float`,
+  `None` se infinito) e `valor_grafico` (Etapa 8: o y do resultado como
+  `float`, `None` se não resolvido, não existe ou não for real finito — o
+  frontend não dá para confiar em `resultado.texto`/`latex` para plotar,
+  que pode ser `"e"`, `"π"`, `"4/3"`; por isso os dois já vêm como número
+  pronto, calculados em `rotas/limite.py`). Erros sempre `{"erro": "..."}`
+  (`RespostaErro`).
 - `grafico/pontos.py`: amostra `f(x)` com `sp.lambdify` (NumPy) — ponto
   finito: janela `[ponto−5, ponto+5]`; x → +∞: `[−10, 30]`; x → −∞:
   `[−30, 10]`; 201 pontos (ímpar de propósito, para o próprio ponto cair
@@ -338,7 +339,7 @@ muito perto do ponto podem ser classificadas errado ou ficar sem conclusão
   por um único `executar_com_timeout` (5s); NaN, complexo (fora de uma
   tolerância) e não finito viram `y=None`.
 
-**Código da página (`frontend/`, fim da Etapa 7, sem o gráfico ainda):**
+**Código da página (`frontend/`, fim da Etapa 8):**
 
 - `index.html`: formulário com `campo-funcao` e `campo-ponto` (`novalidate`
   de propósito — a validação de campo vazio/inválido é só da API, que já
@@ -359,20 +360,35 @@ muito perto do ponto podem ser classificadas errado ou ficar sem conclusão
   vier `null`) e a lista de passos, cada fórmula via
   `katex.render(latex, elemento, {throwOnError: false})`. Todo texto da API
   entra com `textContent` (nunca `innerHTML`) — só o `latex` de cada item
-  chega ao KaTeX. Ignora de propósito o campo `grafico` da resposta (Etapa
-  8, ainda não feita); `frontend/js/grafico.js` ainda não existe.
-- Verificado (pela orquestradora, não só pelo agente): os dois servidores
-  no ar (`cd backend && .venv/bin/uvicorn app.main:app --port 8000` e `cd
-  frontend && python3 -m http.server 5500`, porta liberada no CORS) e
-  chamadas reais via curl reproduzindo o `fetch` do frontend, para os 5
-  estados de resposta (existe, não existe, ponto infinito, não resolvido,
-  entrada inválida) e campo vazio — todos bateram com o que o JS trata.
-  Hashes SRI do KaTeX recalculados com `openssl dgst -sha384` e conferidos
-  contra o HTML. **Não verificado: a renderização visual de verdade** (CSS
-  aplicado, KaTeX desenhando as fórmulas na tela, responsividade) — nem o
-  `frontend-web` nem a orquestradora tiveram uma ferramenta de navegador
-  disponível nesta sessão. Quem continuar deveria abrir a página de
-  verdade antes de considerar a Etapa 7 definitivamente fechada.
+  chega ao KaTeX. Chama `renderizarGrafico` (abaixo) depois do bloco de
+  resultado e antes dos passos.
+- `js/grafico.js` (Etapa 8): `renderizarGrafico(resposta)` desenha
+  `grafico.pontos` com Chart.js (4.4.9, CDN, `integrity` travado e
+  recalculado pela orquestradora) como linha (`pointRadius: 0`,
+  `spanGaps: false` — quebra a linha nos `y: null`, não liga os dois lados
+  de uma assíntota ou furo). Só desenha o ponto destacado (segundo
+  dataset, sem linha, raio maior, cor de contraste) quando `ponto_grafico`
+  **e** `valor_grafico` vêm os dois não nulos — é a única combinação em
+  que há um `(x, y)` de verdade para marcar; em qualquer outro caso (ponto
+  infinito, limite que não existe ou não resolvido), mostra só a curva.
+  Guarda a instância do `Chart` num módulo e chama `.destroy()` antes de
+  desenhar de novo (recálculo na mesma página). Só lê números da resposta
+  (nunca `innerHTML`/texto livre).
+- Verificado (pela orquestradora, não só pelos agentes): os dois
+  servidores no ar (`cd backend && .venv/bin/uvicorn app.main:app --port
+  8000` e `cd frontend && python3 -m http.server 5500`, porta liberada no
+  CORS) e chamadas reais via curl reproduzindo o `fetch` do frontend, para
+  os 5 estados de resposta (existe, não existe, ponto infinito, não
+  resolvido, entrada inválida), campo vazio, e a lógica de quando desenhar
+  o marcador do gráfico (com e sem `ponto_grafico`/`valor_grafico`) — tudo
+  bateu com o que o JS trata. Hashes SRI do KaTeX e do Chart.js
+  recalculados com `openssl dgst -sha384` e conferidos contra o HTML.
+  **Não verificado: a renderização visual de verdade** (CSS aplicado,
+  KaTeX e Chart.js desenhando de fato na tela, responsividade) — nenhuma
+  sessão até agora (nem os agentes `frontend-web`, nem a orquestradora)
+  teve uma ferramenta de navegador disponível. Quem continuar deveria
+  abrir a página de verdade antes de considerar as Etapas 7 e 8
+  definitivamente fechadas.
 
 ## 6. Como trabalhar (pedido explícito da dona do projeto)
 
@@ -423,17 +439,19 @@ a entrada, se sobrar tempo.
 
 ## 9. Próximo passo
 
-Etapas 5 e 6 já mescladas na `main` (PRs #14 e #15). A Etapa 7 está completa
-na branch `feature/etapa-7-pagina` (commit `2d70d68`); falta o `git push` e,
-se quiserem, abrir o PR. **Antes de seguir para a Etapa 8, vale abrir a
-página de verdade num navegador** (`cd backend && .venv/bin/uvicorn
-app.main:app --port 8000`, e `cd frontend && python3 -m http.server 5500`,
-depois `http://127.0.0.1:5500`) — nem o `frontend-web` nem a orquestradora
-tiveram ferramenta de navegador nesta sessão, então a confirmação visual
-(CSS, fórmulas do KaTeX, responsividade) ainda está pendente, mesmo com a
-lógica já conferida via curl para os 5 estados da resposta. Depois disso, a
-Etapa 8 é o gráfico (os pontos já vêm prontos em `grafico.pontos` da API;
-falta só desenhar — `frontend/js/grafico.js`, com alguma biblioteca de
-gráficos leve, ex. Chart.js ou function-plot, incluída via CDN como o
-KaTeX), com o `frontend-web`, numa branch nova a partir da
-`feature/etapa-7-pagina` (ou da `main`, se ela já tiver sido mesclada).
+Etapas 5, 6 e 7 já mescladas na `main` (PRs #14, #15 e #16). A Etapa 8 está
+completa na branch `feature/etapa-8-grafico` (commits `9be3f7d` e
+`a93e562`); falta o `git push` e, se quiserem, abrir o PR. **Antes de
+considerar as Etapas 7 e 8 de verdade prontas, abra a página num
+navegador** (`cd backend && .venv/bin/uvicorn app.main:app --port 8000`, e
+`cd frontend && python3 -m http.server 5500`, depois
+`http://127.0.0.1:5500`) — nenhuma sessão até agora teve ferramenta de
+navegador, então a confirmação visual (CSS, fórmulas do KaTeX, o gráfico do
+Chart.js desenhando de fato, responsividade) ainda está pendente, mesmo com
+a lógica já conferida via curl para todos os estados da resposta.
+
+Depois disso, a Etapa 9 é a última: testes de todos os tipos de limite e
+revisão das explicações (ver CONTEXTO.md, seção 7, "boas práticas") —
+provavelmente mais revisão/varredura ampla (`revisor-matematico`, testes de
+ponta a ponta da API) do que código novo, já que cada etapa já foi revisada
+ao longo do caminho.
