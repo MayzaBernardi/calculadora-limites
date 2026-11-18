@@ -1333,7 +1333,6 @@ def test_limitada_sobre_infinito_resolve(funcao, ponto):
         ("(x+1)/(x^2+1)", "infinito"),    # numerador não limitado (cresce com x)
         ("x^2+1", "infinito"),            # polinômio puro, sem denominador que importe
         ("sen(x)/x", "2"),                # ponto finito: a técnica é só para o infinito
-        ("sen(x)*cos(x)/x", "infinito"),  # produto de duas partes com x: não cobrimos
     ],
 )
 def test_limitada_sobre_infinito_nao_se_aplica(funcao, ponto):
@@ -2152,3 +2151,66 @@ def test_potencia_exponencial_divergencia_nao_e_escondida(monkeypatch):
     r = _resolver("(1+1/x)^x", "infinito")
     assert not r.resolvido and r.validado is False
     assert r.passos[-1].titulo == "Conferência não coincidiu"
+
+
+# ============ Etapa 9: revisão final (passos duplicados e "Sem indeterminação" falso) ==
+
+@pytest.mark.parametrize(
+    "funcao, ponto, esperado",
+    [
+        # Potência -> 0·∞ -> 0/0 fundamental (3 níveis de recursão).
+        ("(1+1/x)^(2x)", "infinito", sp.exp(2)),
+        # Denominador comum -> fundamental -> L'Hôpital -> fundamental.
+        ("1/x - 1/sen(x)", "0", 0),
+        # L'Hôpital -> fundamental.
+        ("sen(x)^3/x^3", "0", 1),
+        # 0·∞ -> 0/0 fundamental.
+        ("x*sen(1/x)", "infinito", 1),
+        # 0^0 -> 0·∞ -> 0/0 -> L'Hôpital -> laterais (o pior caso: a cadeia
+        # passava por valores 0, 0 e 1 em sequência antes da correção).
+        ("x^x", "0", 1),
+    ],
+)
+def test_recursao_profunda_tem_um_so_passo_resultado(funcao, ponto, esperado):
+    r = _resolver(funcao, ponto)
+    assert r.resolvido and r.existe
+    assert r.valor == esperado
+    assert r.validado is True
+    titulos = [p.titulo for p in r.passos]
+    assert titulos.count("Resultado") == 1
+    assert titulos[-1] == "Resultado"
+    # a cadeia continua contando a história completa: nenhum passo de
+    # técnica foi descartado, só o "Resultado" repetido desapareceu.
+    assert len(titulos) > 2
+
+
+def test_recursao_de_um_so_nivel_continua_com_um_resultado():
+    # Caso de controle: fatoração simples resolve de primeira (a subexpressão
+    # cai em substituição direta, que não gera "Resultado"), então não havia
+    # nada para remover; confirma que a correção não afeta esse caso.
+    r = _resolver("(x^2-4)/(x-2)", "2")
+    titulos = [p.titulo for p in r.passos]
+    assert titulos.count("Resultado") == 1
+    assert titulos[-1] == "Resultado"
+
+
+@pytest.mark.parametrize(
+    "funcao, ponto",
+    [
+        ("sen(x)*cos(x)/x", "infinito"),
+        ("sen(x)*cos(x)/x", "-infinito"),
+        ("x*cos(x)/(x^2+1)", "infinito"),
+        ("x*cos(x)/(x^2+1)", "-infinito"),
+    ],
+)
+def test_produto_de_fatores_oscilantes_usa_confronto_nao_sem_indeterminacao(
+    funcao, ponto
+):
+    r = _resolver(funcao, ponto)
+    assert r.resolvido and r.existe and r.valor == 0
+    assert r.validado is True
+    assert sp.limit(ler_funcao(funcao), x, ler_ponto(ponto)) == 0
+    titulos = [p.titulo for p in r.passos]
+    assert "Numerador limitado, denominador infinito" in titulos
+    assert "Teorema do confronto" in titulos
+    assert "Sem indeterminação" not in titulos

@@ -285,16 +285,25 @@ def divisao_maior_potencia(
     )
 
 
+def _intervalo_produto(a: tuple[sp.Expr, sp.Expr], b: tuple[sp.Expr, sp.Expr]):
+    """Intervalo do produto de dois intervalos [a0, a1] e [b0, b1]: o mínimo e
+    o máximo estão entre os 4 produtos dos extremos (multiplicação de
+    intervalos), porque o produto é monótono em cada extremo separadamente."""
+    produtos = [a[0] * b[0], a[0] * b[1], a[1] * b[0], a[1] * b[1]]
+    return sp.Min(*produtos), sp.Max(*produtos)
+
+
 def intervalo_limitado(expressao: sp.Expr) -> tuple[sp.Expr, sp.Expr] | None:
     """Se a expressão fica sempre entre dois números fixos (para todo x real),
     devolve esse intervalo [mínimo, máximo]; senão, None. Reconhece: números
     (intervalo degenerado, min = max), sen e cos de qualquer argumento
     (sempre entre -1 e 1, mesmo que o argumento cresça sem limite), soma de
-    partes limitadas e produto de uma constante por uma parte limitada (o
-    sinal da constante decide qual extremo é o mínimo e qual é o máximo).
-    Não é exaustivo: não reconhece, por exemplo, produto de duas partes que
-    dependem de x (sen(x)·cos(x)) nem potências. Pública porque também é
-    usada em resolvedor.py para checar domínio perto do infinito."""
+    partes limitadas e produto de partes limitadas (cada fator, mesmo
+    dependendo de x, pode ter seu próprio intervalo conhecido; o intervalo do
+    produto vem da multiplicação de intervalos, com os 4 produtos dos
+    extremos). Não é exaustivo: não reconhece, por exemplo, potências.
+    Pública porque também é usada em resolvedor.py para checar domínio perto
+    do infinito."""
     if not expressao.has(x):
         return expressao, expressao
     if expressao.func in (sp.sin, sp.cos):
@@ -307,19 +316,13 @@ def intervalo_limitado(expressao: sp.Expr) -> tuple[sp.Expr, sp.Expr] | None:
         maximo = sp.Add(*(i[1] for i in intervalos))
         return minimo, maximo
     if expressao.is_Mul:
-        partes_com_x = [f for f in expressao.args if f.has(x)]
-        partes_sem_x = [f for f in expressao.args if not f.has(x)]
-        if len(partes_com_x) != 1:
-            return None  # produto de duas partes com x: não cobrimos aqui
-        intervalo = intervalo_limitado(partes_com_x[0])
-        if intervalo is None:
-            return None
-        constante = sp.Mul(*partes_sem_x)
-        if constante.is_negative:
-            return constante * intervalo[1], constante * intervalo[0]
-        if constante.is_positive or constante == 0:
-            return constante * intervalo[0], constante * intervalo[1]
-        return None  # sinal da constante desconhecido: não arriscamos
+        intervalos = [intervalo_limitado(fator) for fator in expressao.args]
+        if any(i is None for i in intervalos):
+            return None  # algum fator não tem intervalo conhecido
+        minimo, maximo = intervalos[0]
+        for intervalo in intervalos[1:]:
+            minimo, maximo = _intervalo_produto((minimo, maximo), intervalo)
+        return minimo, maximo
     return None
 
 
@@ -331,7 +334,25 @@ class LimitadaSobreInfinito:
     maximo: sp.Expr                  # cota superior conhecida de g(x)
     cota: sp.Expr                    # C = máximo de |mínimo| e |máximo|
     valor_parte_infinita: sp.Expr    # oo ou -oo
+    numerador_original: sp.Expr | None = None    # antes de mover um fator ao denominador
+    denominador_original: sp.Expr | None = None  # (None se não precisou mover nada)
+    fator_movido: sp.Expr | None = None          # fator do numerador que foi para o denominador
     valor: sp.Expr = sp.Integer(0)   # o limite do quociente é sempre 0
+
+
+def _separar_parte_limitada(numerador: sp.Expr) -> tuple[sp.Expr, sp.Expr]:
+    """Separa um produto em (produto dos fatores com intervalo limitado
+    conhecido, produto dos demais fatores). Usada quando o numerador inteiro
+    não é limitado, mas é um produto em que só uma parte é (ex.: x·cos(x):
+    cos(x) é limitado, x não). Fatores sem intervalo conhecido, inclusive o
+    próprio numerador quando ele não é um produto (como x sozinho), vão
+    inteiros para o "resto"."""
+    fatores = sp.Mul.make_args(numerador)
+    limitados = [f for f in fatores if intervalo_limitado(f) is not None]
+    resto = [f for f in fatores if intervalo_limitado(f) is None]
+    parte_limitada = sp.Mul(*limitados) if limitados else sp.Integer(1)
+    parte_resto = sp.Mul(*resto) if resto else sp.Integer(1)
+    return parte_limitada, parte_resto
 
 
 def limitada_sobre_infinito(
@@ -343,25 +364,42 @@ def limitada_sobre_infinito(
     oscilam entre -1 e 1, mas nunca "explodem"), ou é apenas uma constante
     (caso particular de limitada). Pelo teorema do confronto,
     |g(x)/h(x)| <= C/|h(x)|, e o lado direito tende a 0 porque |h(x)| tende a
-    +oo; logo g(x)/h(x) também tende a 0. Só reconhece g(x) limitada nos
-    casos cobertos por `intervalo_limitado`; não cobre, por exemplo, sen(x) ·
-    cos(x) no numerador, nem o caso em que é o denominador que oscila (como
-    x/sen(x), que não tem limite e não deve ser tratado por esta técnica).
-    Devolve None se a técnica não se aplica."""
+    +oo; logo g(x)/h(x) também tende a 0. Reconhece g(x) limitada nos casos
+    cobertos por `intervalo_limitado` (inclusive produtos como sen(x)·cos(x),
+    ambos limitados); quando o numerador é um produto em que só uma parte é
+    limitada e o resto não (ex.: x·cos(x)/(x²+1): cos(x) é limitado, x não),
+    "passa" esse resto para o denominador — dividir os dois pelo mesmo fator
+    não muda o valor da fração — e tenta de novo com o que sobrou. Não cobre
+    o caso em que é o denominador que oscila (como x/sen(x), que não tem
+    limite e não deve ser tratado por esta técnica). Devolve None se a
+    técnica não se aplica."""
     if ponto not in (sp.oo, -sp.oo):
         return None
     numerador, denominador = sp.fraction(expressao)
     if denominador == 1 or denominador.is_number or not denominador.has(x):
         return None
     intervalo = intervalo_limitado(numerador)
+    numerador_original = denominador_original = fator_movido = None
     if intervalo is None:
-        return None
+        parte_limitada, resto = _separar_parte_limitada(numerador)
+        if parte_limitada == 1 or resto == 1:
+            return None  # nada limitado para separar, ou nada para mover
+        intervalo = intervalo_limitado(parte_limitada)
+        if intervalo is None:
+            return None
+        numerador_original, denominador_original = numerador, denominador
+        fator_movido = resto
+        numerador = parte_limitada
+        denominador = sp.cancel(denominador / resto)
     minimo, maximo = intervalo
     valor_h = limite_seguro(denominador, ponto)
     if valor_h not in (sp.oo, -sp.oo):
         return None
     cota = sp.Max(sp.Abs(minimo), sp.Abs(maximo))
-    return LimitadaSobreInfinito(numerador, denominador, minimo, maximo, cota, valor_h)
+    return LimitadaSobreInfinito(
+        numerador, denominador, minimo, maximo, cota, valor_h,
+        numerador_original, denominador_original, fator_movido,
+    )
 
 
 @dataclass
