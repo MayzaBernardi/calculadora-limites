@@ -143,6 +143,49 @@ def test_timeout_devolve_400_sem_500(monkeypatch):
     assert "erro" in corpo and "tempo" in corpo["erro"].lower()
 
 
+def test_ponto_e_valor_grafico_substituicao_direta():
+    resposta = _chamar("(x^2-4)/(x-2)", "2")
+    corpo = resposta.json()
+    assert corpo["ponto_grafico"] == 2.0
+    assert corpo["valor_grafico"] == 4.0
+
+
+def test_ponto_e_valor_grafico_limite_nao_existe():
+    resposta = _chamar("1/x", "0")
+    corpo = resposta.json()
+    assert corpo["ponto_grafico"] == 0.0
+    assert corpo["valor_grafico"] is None
+
+
+def test_ponto_e_valor_grafico_ponto_infinito():
+    resposta = _chamar("(1+1/x)^x", "infinito")
+    corpo = resposta.json()
+    assert corpo["ponto_grafico"] is None
+    assert corpo["valor_grafico"] == pytest.approx(2.718281828, rel=1e-6)
+
+
+def test_ponto_e_valor_grafico_so_um_lado_definido():
+    resposta = _chamar("ln(x)", "0")
+    corpo = resposta.json()
+    assert corpo["ponto_grafico"] == 0.0
+    assert corpo["valor_grafico"] is None
+
+
+def test_ponto_e_valor_grafico_nao_resolvido():
+    resposta = _chamar("sen(1/x)", "0")
+    corpo = resposta.json()
+    assert corpo["resolvido"] is False
+    assert corpo["ponto_grafico"] == 0.0
+    assert corpo["valor_grafico"] is None
+
+
+def test_ponto_e_valor_grafico_resultado_fracionario():
+    resposta = _chamar("(x^3-1)/(x-1)", "1")
+    corpo = resposta.json()
+    assert corpo["ponto_grafico"] == 1.0
+    assert corpo["valor_grafico"] == 3.0
+
+
 def test_cors_header_presente():
     resposta = cliente.post(
         "/limite",

@@ -65,6 +65,11 @@ class RespostaLimite(BaseModel):
     - `laterais` vem None quando o ponto é infinito (não faz sentido nesse
       caso); em ponto finito, vem um objeto com `esquerda`/`direita`, cada um
       podendo ser None se a função não existe nesse lado.
+    - `ponto_grafico`: o x pedido, como float, para marcar no gráfico; None
+      se o ponto pedido é infinito (não há x para desenhar).
+    - `valor_grafico`: o y do resultado, como float, para marcar no gráfico;
+      None se o limite não foi resolvido, não existe, ou o valor não é um
+      número real finito (por exemplo, ∞).
     """
 
     entrada: EntradaLimite
@@ -74,6 +79,8 @@ class RespostaLimite(BaseModel):
     laterais: LateraisResposta | None
     passos: list[PassoResposta]
     grafico: GraficoResposta
+    ponto_grafico: float | None
+    valor_grafico: float | None
 
 
 class RespostaErro(BaseModel):
