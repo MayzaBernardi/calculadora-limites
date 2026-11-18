@@ -121,6 +121,18 @@ def calcular_limite(entrada: EntradaLimite) -> RespostaLimite:
         pontos=[PontoGrafico(x=px, y=py) for px, py in calcular_pontos(expressao, ponto)]
     )
 
+    ponto_grafico = float(ponto) if ponto.is_finite else None
+
+    valor_grafico = None
+    if (
+        resultado.resolvido and resultado.existe and resultado.valor is not None
+        and resultado.valor.is_finite and resultado.valor.is_real
+    ):
+        try:
+            valor_grafico = float(resultado.valor)
+        except (TypeError, ValueError):
+            valor_grafico = None
+
     return RespostaLimite(
         entrada=entrada,
         resolvido=resultado.resolvido,
@@ -129,4 +141,6 @@ def calcular_limite(entrada: EntradaLimite) -> RespostaLimite:
         laterais=laterais_resp,
         passos=passos_resp,
         grafico=grafico_resp,
+        ponto_grafico=ponto_grafico,
+        valor_grafico=valor_grafico,
     )

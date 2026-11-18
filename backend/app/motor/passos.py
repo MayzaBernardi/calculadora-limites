@@ -693,7 +693,9 @@ def passo_conclusao_divisao_maior_potencia(
 
 def passo_funcao_limitada(expressao: sp.Expr, ponto: sp.Expr, d) -> Passo:
     """d: LimitadaSobreInfinito (ver tecnicas.py). Mostra por que o numerador
-    é limitado e que o denominador cresce sem limite."""
+    é limitado e que o denominador cresce sem limite. Quando a técnica
+    precisou mover um fator do numerador para o denominador (d.fator_movido),
+    explica essa reescrita antes."""
     a = texto_ponto(ponto)
     sinal = "+\\infty" if d.valor_parte_infinita == sp.oo else "-\\infty"
     if d.parte_limitada.has(x):
@@ -708,12 +710,30 @@ def passo_funcao_limitada(expressao: sp.Expr, ponto: sp.Expr, d) -> Passo:
             f"o numerador é a constante {_texto_expr(d.parte_limitada)}, que "
             "não muda com x: é o caso mais simples de uma função limitada."
         )
-    explicacao = (
+    reescrita = ""
+    latex_reescrita = ""
+    if d.fator_movido is not None:
+        reescrita = (
+            f"O numerador, {_texto_expr(d.numerador_original)}, não é limitado "
+            f"por si só, porque o fator {_texto_expr(d.fator_movido)} cresce "
+            "sem limite. Mas podemos dividir o numerador e o denominador por "
+            f"esse mesmo fator, {_texto_expr(d.fator_movido)}, sem mudar o "
+            "valor da fração (é o mesmo que multiplicar por 1); o que sobra "
+            f"no numerador, {_texto_expr(d.parte_limitada)}, já é limitado, e "
+            f"o que sobra no denominador, {_texto_expr(d.parte_infinita)}, "
+            "ainda cresce sem limite. "
+        )
+        latex_reescrita = (
+            rf"\frac{{{tex(d.numerador_original)}}}{{{tex(d.denominador_original)}}}"
+            rf" = \frac{{{tex(d.parte_limitada)}}}{{{tex(d.parte_infinita)}}}"
+            r" \qquad "
+        )
+    explicacao = reescrita + (
         f"O denominador, {_texto_expr(d.parte_infinita)}, cresce sem limite "
         f"({texto_ponto(d.valor_parte_infinita)}) quando x tende a {a}. Já o "
         f"numerador, {_texto_expr(d.parte_limitada)}, é limitado: {motivo}"
     )
-    latex = (
+    latex = latex_reescrita + (
         rf"{tex(d.minimo)} \leq {tex(d.parte_limitada)} \leq {tex(d.maximo)}"
         rf" \qquad {tex(d.parte_infinita)} \to {sinal}"
     )

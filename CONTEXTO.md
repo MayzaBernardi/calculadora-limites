@@ -90,9 +90,9 @@ calculadora-limites/
 4. Limites no infinito — **FEITA**
 5. L'Hôpital, ∞−∞, 0·∞ e indeterminações com potência — **FEITA**
 6. API (rota `/limite`) — **FEITA**
-7. Página (formulário e passo a passo) — **FEITA, falta confirmar visualmente num navegador**
-8. Gráfico
-9. Testes de todos os tipos e revisão das explicações
+7. Página (formulário e passo a passo) — **FEITA**
+8. Gráfico — **FEITA**
+9. Testes de todos os tipos e revisão das explicações — **FEITA**
 
 ## 5. Estado atual
 
@@ -120,32 +120,30 @@ Situação das branches no GitHub:
 - `feature/etapa-2-zero-sobre-zero`, `feature/etapa-3-laterais-k-sobre-zero` e
   `feature/etapa-4-limites-no-infinito`: já mescladas na `main`; só falta
   apagar os remotos quando quiserem.
-- `feature/etapa-5-lhopital-potencias`: Etapa 5 completa nela (último commit
-  `3c353b7`), com push feito; a dona do projeto vai abrir e mesclar o PR.
-- `feature/etapa-6-api`: Etapa 6 completa e mesclada na `main` via PR #15
-  (`8453c83`), junto com a Etapa 5 via PR #14 (`7034480`).
-- `feature/etapa-7-pagina`: criada a partir da `main` atualizada (já com as
-  Etapas 5 e 6). Etapa 7 completa num só commit (`2d70d68`): `frontend/`
-  (antes vazia) com `index.html`, `estilo.css`, `js/api.js` e `js/passos.js`.
-  Testada com os dois servidores no ar (`uvicorn` + `python3 -m http.server`)
-  e chamadas reais via curl reproduzindo o `fetch` do frontend, para os 5
-  estados da resposta. **Falta confirmar visualmente num navegador** — nem
-  o `frontend-web` nem a orquestradora tiveram ferramenta de navegador
-  nesta sessão; quem continuar deveria abrir a página de verdade (`cd
-  frontend && python3 -m http.server 5500`, com o backend no ar em
-  `:8000`) antes de dar a Etapa 7 por definitivamente concluída. Falta o
-  `git push` e, se quiserem, abrir o PR.
+- `feature/etapa-6-api` e `feature/etapa-7-pagina`: Etapas 5, 6 e 7 já
+  mescladas na `main` via PRs #14, #15 e #16. A dona do projeto abriu a
+  página de verdade (backend + `http.server`) depois da Etapa 8 e seguiu
+  sem reportar problema visual.
+- `feature/etapa-8-grafico`: Etapa 8 completa e com push feito (commits
+  `9be3f7d`, `a93e562`, `fbd92bf`); falta abrir e mesclar o PR.
+- `feature/etapa-9-testes-revisao`: criada a partir de
+  `feature/etapa-8-grafico` (ainda não mesclada). Última etapa do projeto.
+  Commits: `703c1f7` (README com os comandos de API e página, que
+  faltavam), `2709e62` (corrige passos "Resultado" duplicados e o
+  confronto para produto de fatores oscilantes — achados da varredura
+  final do `revisor-matematico`, cruzando todas as técnicas) e a
+  atualização deste `CONTEXTO.md`. Falta o `git push` e, se quiserem,
+  abrir o PR (depois de mesclar as Etapas 8 e 9, nessa ordem).
 
 Não presuma: rode `git fetch` e confira `git log --oneline --graph --all`.
 
 Ambiente: `backend/.venv` já existe e é ignorado pelo git. Se faltar, rode
 `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` dentro de
 `backend/` (no Ubuntu pode ser preciso `apt install python3.12-venv`). Testes:
-`cd backend && .venv/bin/pytest -q` (hoje: 567 passando — 553 do motor
-mais 14 da API —, em cerca de 2 min; cada limite roda em processo filho e
-alguns testes esperam o timeout de 3 s).
+`cd backend && .venv/bin/pytest -q` (hoje: 582 passando, em cerca de 2 min;
+cada limite roda em processo filho e alguns testes esperam o timeout de 3 s).
 
-**Código em `backend/app/motor/` (fim da Etapa 5):**
+**Código em `backend/app/motor/` (fim da Etapa 9):**
 
 - `entrada.py` (sem mudanças desde a Etapa 1)
   - Define `x` (símbolo real) e `ErroEntrada` (a mensagem vai para o usuário).
@@ -199,14 +197,21 @@ alguns testes esperam o timeout de 3 s).
     líderes) ou maior (±∞, mesmo raciocínio de sinal do `termo_dominante`,
     reimplementado à parte). Exclui de propósito `k/polinômio` e
     `polinômio/k` (numerador ou denominador sem x) — não é ∞/∞ de verdade.
-  - `limitada_sobre_infinito` (Etapa 4): `g(x)/h(x)` com x → ±∞, `h(x)` →
-    ±∞ e `g(x)` limitada perto do infinito (reconhece, via
-    `_intervalo_limitado`: números, sen/cos de qualquer argumento, soma de
-    partes limitadas, produto de constante de sinal conhecido por parte
-    limitada; não reconhece produto de duas partes que dependem de x, como
-    sen(x)·cos(x)). Conclui por confronto em valor absoluto
-    (`|g/h| <= C/|h| -> 0`) que o limite é sempre 0. Não trata o caso em
-    que é o denominador que oscila (`x/sen(x)`, sem limite).
+  - `limitada_sobre_infinito` (Etapa 4; generalizada na Etapa 9): `g(x)/h(x)`
+    com x → ±∞, `h(x)` → ±∞ e `g(x)` limitada perto do infinito (reconhece,
+    via `intervalo_limitado`: números, sen/cos de qualquer argumento, soma
+    de partes limitadas, e produto de qualquer número de fatores com
+    intervalo conhecido, inclusive vários dependendo de x, como
+    `sen(x)·cos(x)` — a Etapa 9 generalizou isso; antes só aceitava no
+    máximo um fator dependendo de x, e produtos como esse caíam, errado, no
+    passo "Sem indeterminação"). Quando só uma parte do numerador é
+    limitada (ex. `x·cos(x)`: `cos(x)` é, `x` não), `_separar_parte_limitada`
+    move o resto para o denominador (dividir os dois pelo mesmo fator não
+    muda a fração) antes de tentar de novo; recua sem concluir se o novo
+    denominador não tender a ±∞ (nunca com valor errado). Conclui por
+    confronto em valor absoluto (`|g/h| <= C/|h| -> 0`) que o limite é
+    sempre 0. Não trata o caso em que é o denominador que oscila
+    (`x/sen(x)`, sem limite).
   - `aplicar_lhopital` (Etapa 5): 0/0 ou ∞/∞ com fração explícita
     (`sp.fraction`); deriva numerador e denominador separadamente (nunca a
     fração inteira). Último recurso para 0/0 (depois de fatoração,
@@ -273,36 +278,71 @@ alguns testes esperam o timeout de 3 s).
     `resolvido=False`. Em ponto finito, se a conferência não confirma
     (`validado is None`), a técnica também não afirma o valor; só a
     substituição direta pura vale sem conferência. Decimais viram racionais.
+    Correção da Etapa 9: antes de anexar `sub.passos[1:]` (os passos da
+    subexpressão resolvida recursivamente), `_continuar` descarta o último
+    se for "Resultado" — sem isso, toda cadeia de 2+ níveis de técnica
+    (qualquer potência indeterminada, por exemplo) empilhava um "Resultado"
+    por nível, repetindo o mesmo passo (ou mostrando valores intermediários
+    em sequência sem explicação).
 
 Testes em `backend/testes/test_motor.py`; `pytest.ini` já configura
 `pythonpath = .`.
 
-Limitações conhecidas ao fim da Etapa 5: a derivação passo a passo de 0·∞,
-0^0, ∞−∞ e potências (que ficavam para a Etapa 5) agora está feita. Segue
-valendo: funções que oscilam sem um numerador reconhecido como limitado
-(`sen(1/x)` em 0, `x/sen(x)` em ±∞, `sen(x)*cos(x)/x` em ±∞) terminam sem
-conclusão — de propósito, nunca com valor errado; `produto_como_quociente`
-só aceita produto de exatamente 2 fatores (um 0·∞ genérico com 3+ fatores,
-fora do caso de potência com coeficiente que `potencia_para_exponencial` já
-contorna, cai no fallback de laterais); `racionalizar_oo_menos_oo` só aceita
-soma de exatamente 2 termos com raiz. A Etapa 3 foi feita sem os agentes
-(indisponíveis na sessão); a revisão foi uma varredura de 1057 limites
-contra o `sp.limit`, com 0 divergências. As Etapas 4 e 5 usaram os agentes
-(`motor-limites` e `revisor-matematico`); a revisão de cada técnica incluiu
-varreduras de centenas de casos aleatórios contra `sp.limit`, 0 divergências
-numéricas encontradas (a da Etapa 4 achou um bug real de LaTeX — parênteses
-faltando na divisão pela maior potência —, corrigido antes do commit; a da
-Etapa 5, na técnica de potências, achou um bug real de identificação de
-forma — veja `_forma_no_lado` acima —, também corrigido antes do commit).
-Limites fundamentais (Etapa 2) não tratam: deslocamento por π
-(`sen(pi*x)/(x-1)` em 1), `x*sen(1/x)` e potências de sen diferentes de 2
-(mas `(sen x - x)/x^3`, que citava aqui, já é resolvido por L'Hôpital desde
-a Etapa 5). O teste de domínio (`definida_no_lado`) é numérico, com amostra
-a 1e-6 do ponto, e roda em processo com timeout de 3 s; funções que oscilam
-muito perto do ponto podem ser classificadas errado ou ficar sem conclusão
-(de propósito, nunca com valor errado).
+Limitações conhecidas ao fim da Etapa 9 (revisão final): a derivação passo a
+passo de 0·∞, 0^0, ∞−∞ e potências (que ficavam para a Etapa 5) está feita.
+Segue valendo: funções que oscilam sem numerador algum reconhecido como
+limitado (`sen(1/x)` em 0; `x/sen(x)` em ±∞, onde é o denominador que
+oscila, nunca o numerador) terminam sem conclusão — de propósito, nunca com
+valor errado; `produto_como_quociente` só aceita produto de exatamente 2
+fatores (um 0·∞ genérico com 3+ fatores, fora do caso de potência com
+coeficiente que `potencia_para_exponencial` já contorna, cai no fallback de
+laterais); `racionalizar_oo_menos_oo` só aceita soma de exatamente 2 termos
+com raiz (ex. `sqrt(x²+x) - x - 1` em `+∞` não conclui). Já não vale mais
+dizer que `sen(x)*cos(x)/x` em ±∞ (e casos parecidos, como
+`x*cos(x)/(x²+1)`) terminam sem conclusão: a revisão final (Etapa 9) achou
+que esses casos caíam, antes, num passo "Sem indeterminação" com
+justificativa matematicamente falsa (a expressão oscila; o valor 0 vem do
+teorema do confronto, não de "ausência de indeterminação") — corrigido
+generalizando `intervalo_limitado` e `limitada_sobre_infinito` (ver acima).
+A mesma revisão achou e corrigiu passos "Resultado" duplicados em cadeias
+de 2 ou mais níveis de recursão entre técnicas (ver nota em `_continuar`,
+acima).
 
-**Código da API (`backend/app/`, fim da Etapa 6):**
+Lacunas novas, achadas só nessa revisão cruzada (e não antes, porque cada
+revisão por etapa olhava uma técnica isolada por vez), documentadas e não
+corrigidas por serem pontuais: raiz de índice ímpar de base negativa (ex.
+`x^(1/3)` em `0` ou em `-8`) é tratada como fora do domínio real pela
+amostragem numérica de `definida_no_lado`, mesmo quando `sp.limit` dela
+mesma (o oráculo que o motor usa para conferir) aceita um valor real nesse
+ramo — o motor nunca afirma errado (fica "de um lado só" ou `resolvido=False`),
+mas a convenção usual de Cálculo (raiz ímpar definida em todo ℝ) não é
+seguida; `piso(x)/x` em `+∞` não conclui (seria o confronto clássico
+`(x-1)/x ≤ piso(x)/x ≤ x/x`, limite 1, mas `piso(x)` não é reconhecida como
+limitada, corretamente, já que não é — só não há técnica de confronto para
+numerador ilimitado mas "preso" perto do denominador); radicais aninhados
+em que o conjugado ainda sobra com raiz (ex.
+`sqrt(x+sqrt(x)) - sqrt(x)` em `+∞`, valor 1/2) não concluem, pelo mesmo
+motivo do `racionalizar_oo_menos_oo` acima.
+
+A Etapa 3 foi feita sem os agentes (indisponíveis na sessão); a revisão foi
+uma varredura de 1057 limites contra o `sp.limit`, com 0 divergências. As
+Etapas 4, 5 e 9 usaram os agentes (`motor-limites` e `revisor-matematico`);
+a revisão de cada técnica (e, na Etapa 9, a varredura final cruzando todas)
+incluiu varreduras de centenas de casos aleatórios contra `sp.limit`, 0
+divergências numéricas encontradas em nenhuma delas (a da Etapa 4 achou um
+bug real de LaTeX — parênteses faltando na divisão pela maior potência —,
+corrigido antes do commit; a da Etapa 5, na técnica de potências, achou um
+bug real de identificação de forma — veja `_forma_no_lado` acima —, também
+corrigido antes do commit; a da Etapa 9 achou os dois problemas de clareza
+pedagógica descritos acima, ambos corrigidos). Limites fundamentais (Etapa
+2) não tratam: deslocamento por π (mas `sen(pi*x)/(x-1)` em `1`, que citava
+isso aqui, já resolve certo por L'Hôpital desde a Etapa 5, valor `-π`), nem
+potências de sen diferentes de 2. O teste de domínio (`definida_no_lado`) é
+numérico, com amostra a 1e-6 do ponto, e roda em processo com timeout de
+3 s; funções que oscilam muito perto do ponto podem ser classificadas
+errado ou ficar sem conclusão (de propósito, nunca com valor errado).
+
+**Código da API (`backend/app/`, fim da Etapa 8):**
 
 - `main.py`: instancia o `FastAPI`, CORS (`allow_origins` com portas comuns de
   dev local — 5500, 5173, 8080, 3000 —, configurável por
@@ -329,8 +369,14 @@ muito perto do ponto podem ser classificadas errado ou ficar sem conclusão
   (`{texto, latex}` ou `None`), `laterais` (`None` se x → ±∞; senão
   `{esquerda, direita}`, cada um `{texto, latex}` ou `None` se a função não
   existe nesse lado), `passos` (lista de `{titulo, explicacao, latex}`,
-  sempre com pelo menos 1) e `grafico.pontos` (lista de `{x, y}`, `y: None`
-  fora do domínio real). Erros sempre `{"erro": "..."}` (`RespostaErro`).
+  sempre com pelo menos 1), `grafico.pontos` (lista de `{x, y}`, `y: None`
+  fora do domínio real), `ponto_grafico` (Etapa 8: o x pedido como `float`,
+  `None` se infinito) e `valor_grafico` (Etapa 8: o y do resultado como
+  `float`, `None` se não resolvido, não existe ou não for real finito — o
+  frontend não dá para confiar em `resultado.texto`/`latex` para plotar,
+  que pode ser `"e"`, `"π"`, `"4/3"`; por isso os dois já vêm como número
+  pronto, calculados em `rotas/limite.py`). Erros sempre `{"erro": "..."}`
+  (`RespostaErro`).
 - `grafico/pontos.py`: amostra `f(x)` com `sp.lambdify` (NumPy) — ponto
   finito: janela `[ponto−5, ponto+5]`; x → +∞: `[−10, 30]`; x → −∞:
   `[−30, 10]`; 201 pontos (ímpar de propósito, para o próprio ponto cair
@@ -338,7 +384,7 @@ muito perto do ponto podem ser classificadas errado ou ficar sem conclusão
   por um único `executar_com_timeout` (5s); NaN, complexo (fora de uma
   tolerância) e não finito viram `y=None`.
 
-**Código da página (`frontend/`, fim da Etapa 7, sem o gráfico ainda):**
+**Código da página (`frontend/`, fim da Etapa 8):**
 
 - `index.html`: formulário com `campo-funcao` e `campo-ponto` (`novalidate`
   de propósito — a validação de campo vazio/inválido é só da API, que já
@@ -359,20 +405,35 @@ muito perto do ponto podem ser classificadas errado ou ficar sem conclusão
   vier `null`) e a lista de passos, cada fórmula via
   `katex.render(latex, elemento, {throwOnError: false})`. Todo texto da API
   entra com `textContent` (nunca `innerHTML`) — só o `latex` de cada item
-  chega ao KaTeX. Ignora de propósito o campo `grafico` da resposta (Etapa
-  8, ainda não feita); `frontend/js/grafico.js` ainda não existe.
-- Verificado (pela orquestradora, não só pelo agente): os dois servidores
-  no ar (`cd backend && .venv/bin/uvicorn app.main:app --port 8000` e `cd
-  frontend && python3 -m http.server 5500`, porta liberada no CORS) e
-  chamadas reais via curl reproduzindo o `fetch` do frontend, para os 5
-  estados de resposta (existe, não existe, ponto infinito, não resolvido,
-  entrada inválida) e campo vazio — todos bateram com o que o JS trata.
-  Hashes SRI do KaTeX recalculados com `openssl dgst -sha384` e conferidos
-  contra o HTML. **Não verificado: a renderização visual de verdade** (CSS
-  aplicado, KaTeX desenhando as fórmulas na tela, responsividade) — nem o
-  `frontend-web` nem a orquestradora tiveram uma ferramenta de navegador
-  disponível nesta sessão. Quem continuar deveria abrir a página de
-  verdade antes de considerar a Etapa 7 definitivamente fechada.
+  chega ao KaTeX. Chama `renderizarGrafico` (abaixo) depois do bloco de
+  resultado e antes dos passos.
+- `js/grafico.js` (Etapa 8): `renderizarGrafico(resposta)` desenha
+  `grafico.pontos` com Chart.js (4.4.9, CDN, `integrity` travado e
+  recalculado pela orquestradora) como linha (`pointRadius: 0`,
+  `spanGaps: false` — quebra a linha nos `y: null`, não liga os dois lados
+  de uma assíntota ou furo). Só desenha o ponto destacado (segundo
+  dataset, sem linha, raio maior, cor de contraste) quando `ponto_grafico`
+  **e** `valor_grafico` vêm os dois não nulos — é a única combinação em
+  que há um `(x, y)` de verdade para marcar; em qualquer outro caso (ponto
+  infinito, limite que não existe ou não resolvido), mostra só a curva.
+  Guarda a instância do `Chart` num módulo e chama `.destroy()` antes de
+  desenhar de novo (recálculo na mesma página). Só lê números da resposta
+  (nunca `innerHTML`/texto livre).
+- Verificado (pela orquestradora, não só pelos agentes): os dois
+  servidores no ar (`cd backend && .venv/bin/uvicorn app.main:app --port
+  8000` e `cd frontend && python3 -m http.server 5500`, porta liberada no
+  CORS) e chamadas reais via curl reproduzindo o `fetch` do frontend, para
+  os 5 estados de resposta (existe, não existe, ponto infinito, não
+  resolvido, entrada inválida), campo vazio, e a lógica de quando desenhar
+  o marcador do gráfico (com e sem `ponto_grafico`/`valor_grafico`) — tudo
+  bateu com o que o JS trata. Hashes SRI do KaTeX e do Chart.js
+  recalculados com `openssl dgst -sha384` e conferidos contra o HTML.
+  **Não verificado: a renderização visual de verdade** (CSS aplicado,
+  KaTeX e Chart.js desenhando de fato na tela, responsividade) — nenhuma
+  sessão até agora (nem os agentes `frontend-web`, nem a orquestradora)
+  teve uma ferramenta de navegador disponível. Quem continuar deveria
+  abrir a página de verdade antes de considerar as Etapas 7 e 8
+  definitivamente fechadas.
 
 ## 6. Como trabalhar (pedido explícito da dona do projeto)
 
@@ -423,17 +484,21 @@ a entrada, se sobrar tempo.
 
 ## 9. Próximo passo
 
-Etapas 5 e 6 já mescladas na `main` (PRs #14 e #15). A Etapa 7 está completa
-na branch `feature/etapa-7-pagina` (commit `2d70d68`); falta o `git push` e,
-se quiserem, abrir o PR. **Antes de seguir para a Etapa 8, vale abrir a
-página de verdade num navegador** (`cd backend && .venv/bin/uvicorn
-app.main:app --port 8000`, e `cd frontend && python3 -m http.server 5500`,
-depois `http://127.0.0.1:5500`) — nem o `frontend-web` nem a orquestradora
-tiveram ferramenta de navegador nesta sessão, então a confirmação visual
-(CSS, fórmulas do KaTeX, responsividade) ainda está pendente, mesmo com a
-lógica já conferida via curl para os 5 estados da resposta. Depois disso, a
-Etapa 8 é o gráfico (os pontos já vêm prontos em `grafico.pontos` da API;
-falta só desenhar — `frontend/js/grafico.js`, com alguma biblioteca de
-gráficos leve, ex. Chart.js ou function-plot, incluída via CDN como o
-KaTeX), com o `frontend-web`, numa branch nova a partir da
-`feature/etapa-7-pagina` (ou da `main`, se ela já tiver sido mesclada).
+**Todas as 9 etapas estão completas.** Etapas 5, 6 e 7 já mescladas na
+`main` (PRs #14, #15 e #16). Faltam só os pushes e PRs de
+`feature/etapa-8-grafico` (já com push feito, falta abrir o PR) e
+`feature/etapa-9-testes-revisao` (branch atual; falta `git push`), nessa
+ordem (a 9 depende da 8). Não há próxima etapa de desenvolvimento prevista
+no projeto original — o que resta é trabalho de revisão humana:
+
+- Mesclar os PRs pendentes (8 e 9, nessa ordem).
+- Abrir a página de novo depois de mesclar tudo, para uma última confirmação
+  visual com o motor já sem os passos duplicados e com o confronto corrigido
+  (ex.: `x^x` em `0`, ou `(1+1/x)^(2x)` em `infinito`, que antes mostravam
+  "Resultado" repetido).
+- Se quiserem, apagar as branches remotas já mescladas (Etapas 2, 3, 4; e,
+  depois de mescladas, 5, 6, 7, 8, 9).
+- Qualquer lacuna documentada na seção 5 ("Limitações conhecidas") pode virar
+  trabalho futuro, mas nenhuma delas afeta a correção do que já está pronto
+  (o motor nunca afirma um valor errado; só fica honesto "sem concluir" nos
+  casos fora de escopo).

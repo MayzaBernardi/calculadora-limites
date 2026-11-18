@@ -127,6 +127,9 @@ function renderizarPassos(passos) {
 function exibirResposta(resposta) {
   limparResultado();
   areaResultado.appendChild(renderizarResultado(resposta));
+  if (resposta.grafico && resposta.grafico.pontos && resposta.grafico.pontos.length > 0) {
+    areaResultado.appendChild(renderizarGrafico(resposta));
+  }
   if (resposta.passos && resposta.passos.length > 0) {
     areaResultado.appendChild(renderizarPassos(resposta.passos));
   }

@@ -169,6 +169,16 @@ button:disabled {
   color: var(--cor-texto-suave);
 }
 
+/* Gráfico */
+.grafico-container {
+  background: #fff;
+  border: 1px solid var(--cor-passo-borda);
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 1.25rem 0;
+  height: 320px;
+}
+
 /* Passos */
 .titulo-secao-passos {
   margin-top: 1.75rem;

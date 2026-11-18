@@ -192,7 +192,14 @@ def _continuar(
             resolvido=False,
             passos=base + [passos.passo_tecnica_sem_conclusao("nao_confirmado")],
         )
-    lista = base + passos_tecnica + sub.passos[1:]  # o 1º repete o limite já mostrado
+    corpo_sub = sub.passos[1:]  # o 1º repete o limite já mostrado
+    if corpo_sub and corpo_sub[-1].titulo == "Resultado":
+        # sub já terminou com o próprio "Resultado" (ela também passou por
+        # _continuar, ou por uma técnica de ponto infinito); seria repetir o
+        # mesmo passo (ou um valor intermediário) antes do "Resultado" de
+        # fora, que já mostra o valor final — então descartamos o da sub.
+        corpo_sub = corpo_sub[:-1]
+    lista = base + passos_tecnica + corpo_sub
     lista.append(passos.passo_resultado(original, ponto, valor))
     return Resultado(
         resolvido=True, existe=True, valor=valor, passos=lista, validado=validado
