@@ -5,3 +5,6 @@ sympy
 numpy
 pytest
 httpx
+google-genai
+python-dotenv
+python-multipart
