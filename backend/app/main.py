@@ -1,13 +1,23 @@
 """Ponto de entrada da API: instancia o FastAPI, configura CORS e inclui as
 rotas. Nunca deixa stack trace vazar: todo erro vira {"erro": "..."}."""
 import os
+from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.rotas.limite import roteador
+# Carrega backend/.env (chave do Gemini etc.) antes de qualquer leitura de
+# variável de ambiente. Caminho fixo relativo a este arquivo (backend/app/
+# main.py), para funcionar independente do diretório de onde o servidor é
+# iniciado. Não faz nada (nem levanta erro) se o arquivo não existir — é o
+# caso dos testes automatizados, que não têm essa chave.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
+from app.rotas.imagem import roteador as roteador_imagem
+from app.rotas.limite import roteador as roteador_limite
 
 app = FastAPI(title="Calculadora de Limites com Passo a Passo")
 
@@ -36,7 +46,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(roteador)
+app.include_router(roteador_limite)
+app.include_router(roteador_imagem)
 
 
 @app.exception_handler(HTTPException)

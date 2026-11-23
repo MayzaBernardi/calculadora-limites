@@ -194,3 +194,123 @@ def test_cors_header_presente():
     )
     assert resposta.status_code == 200
     assert resposta.headers.get("access-control-allow-origin") == "http://localhost:5500"
+
+
+# --- POST /limite/imagem ---------------------------------------------------
+#
+# A suíte automatizada nunca chama o Gemini de verdade: `extrair_funcao_e_ponto`
+# é sempre substituída por monkeypatch, tanto para não depender de rede/chave
+# quanto para não gastar cota da API em CI.
+
+_PNG_MINIMO = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\xdac\xf8\xcf\xc0\x00"
+    b"\x00\x00\x03\x00\x01\x1a\x0b\x92\xf5\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+
+def _enviar_imagem(conteudo: bytes = _PNG_MINIMO, tipo: str = "image/png", nome: str = "conta.png"):
+    return cliente.post("/limite/imagem", files={"imagem": (nome, conteudo, tipo)})
+
+
+def test_imagem_valida_segue_mesmo_contrato_de_limite(monkeypatch):
+    import app.rotas.imagem as modulo_imagem
+
+    monkeypatch.setattr(
+        modulo_imagem, "extrair_funcao_e_ponto",
+        lambda dados, tipo_mime: ("(x^2-4)/(x-2)", "2"),
+    )
+    resposta = _enviar_imagem()
+    assert resposta.status_code == 200
+    corpo = resposta.json()
+    assert corpo["entrada"] == {"funcao": "(x^2-4)/(x-2)", "ponto": "2"}
+    assert corpo["resolvido"] is True
+    assert corpo["existe"] is True
+    assert corpo["resultado"]["texto"] == "4"
+    assert len(corpo["passos"]) >= 1
+    assert len(corpo["grafico"]["pontos"]) > 1
+
+
+def test_imagem_tipo_de_arquivo_invalido_devolve_400(monkeypatch):
+    import app.rotas.imagem as modulo_imagem
+
+    chamou = False
+
+    def _nao_deveria_chamar(dados, tipo_mime):
+        nonlocal chamou
+        chamou = True
+        return ("x", "0")
+
+    monkeypatch.setattr(modulo_imagem, "extrair_funcao_e_ponto", _nao_deveria_chamar)
+    resposta = _enviar_imagem(tipo="application/pdf", nome="conta.pdf")
+    assert resposta.status_code == 400
+    corpo = resposta.json()
+    assert "erro" in corpo and corpo["erro"]
+    assert "Traceback" not in corpo["erro"]
+    assert not chamou  # nem chega a gastar uma chamada ao Gemini
+
+
+def test_imagem_grande_demais_devolve_400(monkeypatch):
+    import app.rotas.imagem as modulo_imagem
+
+    chamou = False
+
+    def _nao_deveria_chamar(dados, tipo_mime):
+        nonlocal chamou
+        chamou = True
+        return ("x", "0")
+
+    monkeypatch.setattr(modulo_imagem, "extrair_funcao_e_ponto", _nao_deveria_chamar)
+    conteudo_grande = b"\x00" * (5 * 1024 * 1024 + 1)
+    resposta = _enviar_imagem(conteudo=conteudo_grande)
+    assert resposta.status_code == 400
+    corpo = resposta.json()
+    assert "erro" in corpo and corpo["erro"]
+    assert not chamou
+
+
+def test_imagem_erro_de_extracao_devolve_400(monkeypatch):
+    import app.rotas.imagem as modulo_imagem
+    from app.visao.gemini import ErroExtracaoImagem
+
+    def _levanta(dados, tipo_mime):
+        raise ErroExtracaoImagem("Não conseguimos reconhecer uma conta de limite nessa imagem.")
+
+    monkeypatch.setattr(modulo_imagem, "extrair_funcao_e_ponto", _levanta)
+    resposta = _enviar_imagem()
+    assert resposta.status_code == 400
+    corpo = resposta.json()
+    assert "erro" in corpo
+    assert "reconhec" in corpo["erro"].lower()
+    assert "Traceback" not in corpo["erro"]
+
+
+def test_imagem_texto_reconhecido_invalido_devolve_400_com_contexto(monkeypatch):
+    """Função reconhecida usa um caractere fora do whitelist de entrada.py:
+    o erro deve citar o que foi reconhecido, para a pessoa entender que pode
+    ter sido um problema de leitura da imagem."""
+    import app.rotas.imagem as modulo_imagem
+
+    monkeypatch.setattr(
+        modulo_imagem, "extrair_funcao_e_ponto",
+        lambda dados, tipo_mime: ("x + y", "0"),
+    )
+    resposta = _enviar_imagem()
+    assert resposta.status_code == 400
+    corpo = resposta.json()
+    assert "erro" in corpo
+    assert "x + y" in corpo["erro"]
+    assert "Traceback" not in corpo["erro"]
+
+
+def test_imagem_sem_chave_configurada_devolve_500_sem_derrubar_processo(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    resposta = _enviar_imagem()
+    assert resposta.status_code == 500
+    corpo = resposta.json()
+    assert "erro" in corpo and corpo["erro"]
+    assert "Traceback" not in corpo["erro"]
+    # o processo continua no ar: a rota de texto segue funcionando.
+    resposta_texto = _chamar("x^2", "1")
+    assert resposta_texto.status_code == 200
+

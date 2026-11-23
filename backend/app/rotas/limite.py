@@ -77,14 +77,15 @@ def _valor_resposta(valor: sp.Expr) -> ValorResposta:
     return ValorResposta(texto=_texto_valor(valor), latex=tex(valor))
 
 
-@roteador.post("/limite", response_model=RespostaLimite)
-def calcular_limite(entrada: EntradaLimite) -> RespostaLimite:
-    try:
-        expressao = ler_funcao(entrada.funcao)
-        ponto = ler_ponto(entrada.ponto)
-    except ErroEntrada as erro:
-        raise HTTPException(status_code=400, detail=str(erro)) from erro
-
+def montar_resposta(
+    expressao: sp.Expr, ponto: sp.Expr, entrada_echo: EntradaLimite
+) -> RespostaLimite:
+    """Resolve o limite (com timeout) e monta a RespostaLimite a partir do
+    Resultado do motor. Compartilhada entre POST /limite (função/ponto
+    digitados) e POST /limite/imagem (função/ponto reconhecidos na foto):
+    uma vez com a expressão e o ponto já lidos (sp.Expr), o resto do
+    caminho é idêntico. `entrada_echo` só preenche o campo `entrada` da
+    resposta (o que foi digitado, ou o que foi reconhecido na imagem)."""
     ok, resultado = _resolver_com_timeout(expressao, ponto, TEMPO_MAXIMO_RESOLUCAO)
     if not ok:
         raise HTTPException(
@@ -134,7 +135,7 @@ def calcular_limite(entrada: EntradaLimite) -> RespostaLimite:
             valor_grafico = None
 
     return RespostaLimite(
-        entrada=entrada,
+        entrada=entrada_echo,
         resolvido=resultado.resolvido,
         existe=resultado.existe,
         resultado=resultado_resp,
@@ -144,3 +145,14 @@ def calcular_limite(entrada: EntradaLimite) -> RespostaLimite:
         ponto_grafico=ponto_grafico,
         valor_grafico=valor_grafico,
     )
+
+
+@roteador.post("/limite", response_model=RespostaLimite)
+def calcular_limite(entrada: EntradaLimite) -> RespostaLimite:
+    try:
+        expressao = ler_funcao(entrada.funcao)
+        ponto = ler_ponto(entrada.ponto)
+    except ErroEntrada as erro:
+        raise HTTPException(status_code=400, detail=str(erro)) from erro
+
+    return montar_resposta(expressao, ponto, entrada)
