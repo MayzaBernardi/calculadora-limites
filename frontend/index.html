@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Calculadora de Limites com Passo a Passo</title>
 
+<script>
+  // Decide o tema antes da folha de estilo ser aplicada, para a página não
+  // "piscar" claro e depois escurecer quando o tema salvo/do sistema é escuro.
+  (function () {
+    var salvo = localStorage.getItem("calculadora-limites-tema");
+    var prefereEscuro = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.setAttribute("data-tema", salvo || (prefereEscuro ? "escuro" : "claro"));
+  })();
+</script>
+
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"
       integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV"
       crossorigin="anonymous">
@@ -20,15 +30,20 @@
 </head>
 <body>
 <div class="container">
-  <header>
-    <h1>Calculadora de Limites com Passo a Passo</h1>
-    <p class="subtitulo">
-      Digite uma função de <em>x</em> e o valor para onde <em>x</em> tende.
-      Os limites laterais são calculados automaticamente.
-    </p>
+  <header class="cabecalho">
+    <div class="cabecalho-texto">
+      <h1>Calculadora de Limites com Passo a Passo</h1>
+      <p class="subtitulo">
+        Digite uma função de <em>x</em> e o valor para onde <em>x</em> tende.
+        Os limites laterais são calculados automaticamente.
+      </p>
+    </div>
+    <button type="button" id="botao-tema" class="botao-tema" aria-pressed="false">
+      Tema escuro
+    </button>
   </header>
 
-  <form id="form-limite" novalidate>
+  <form id="form-limite" class="cartao" novalidate>
     <div class="campo">
       <label for="campo-funcao">Função f(x)</label>
       <input
@@ -56,7 +71,10 @@
     <button type="submit" id="botao-calcular">Calcular</button>
   </form>
 
-  <p id="indicador-carregando" class="carregando" hidden role="status">Calculando...</p>
+  <p id="indicador-carregando" class="carregando" hidden role="status">
+    <span class="spinner" aria-hidden="true"></span>
+    <span>Calculando...</span>
+  </p>
 
   <div id="area-erro" class="erro" hidden role="alert"></div>
 
@@ -66,5 +84,28 @@
 <script src="js/api.js"></script>
 <script src="js/passos.js"></script>
 <script src="js/grafico.js"></script>
+<script>
+  // Sincroniza o rótulo do botão com o tema já aplicado (ver script no
+  // <head>) e cuida só do clique. Nenhum dado da API entra aqui.
+  (function () {
+    const CHAVE_TEMA = "calculadora-limites-tema";
+    const raiz = document.documentElement;
+    const botaoTema = document.getElementById("botao-tema");
+
+    function atualizarBotao(tema) {
+      botaoTema.setAttribute("aria-pressed", String(tema === "escuro"));
+      botaoTema.textContent = tema === "escuro" ? "Tema claro" : "Tema escuro";
+    }
+
+    atualizarBotao(raiz.getAttribute("data-tema"));
+
+    botaoTema.addEventListener("click", function () {
+      const novoTema = raiz.getAttribute("data-tema") === "escuro" ? "claro" : "escuro";
+      raiz.setAttribute("data-tema", novoTema);
+      atualizarBotao(novoTema);
+      localStorage.setItem(CHAVE_TEMA, novoTema);
+    });
+  })();
+</script>
 </body>
 </html>

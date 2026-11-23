@@ -7,13 +7,29 @@
 let instanciaGrafico = null;
 
 /**
+ * Lê as cores do tema atual (claro ou escuro) direto das variáveis CSS,
+ * para o gráfico acompanhar o alternador de tema no momento em que é
+ * desenhado. Não lê nenhum dado da API, só o estilo computado da página.
+ */
+function coresDoTema() {
+  const estilo = getComputedStyle(document.documentElement);
+  const ler = (nome, reserva) => estilo.getPropertyValue(nome).trim() || reserva;
+  return {
+    curva: ler("--cor-destaque", "#2e5aac"),
+    marcador: ler("--cor-erro-borda", "#c0392b"),
+    texto: ler("--cor-texto-suave", "#4a5063"),
+    grade: ler("--cor-borda", "#d7d9e3"),
+  };
+}
+
+/**
  * Recebe a resposta inteira da API e devolve um elemento <div> (com um
  * <canvas> dentro) já com o gráfico montado, pronto para ser anexado na
  * página. Não manipula o DOM global.
  */
 function renderizarGrafico(resposta) {
   const container = document.createElement("div");
-  container.className = "grafico-container";
+  container.className = "grafico-container aparecer";
 
   const canvas = document.createElement("canvas");
   canvas.setAttribute("role", "img");
@@ -28,15 +44,18 @@ function renderizarGrafico(resposta) {
     y: ponto.y,
   }));
 
+  const cores = coresDoTema();
+
   const datasets = [
     {
       label: "f(x)",
       data: pontosCurva,
-      borderColor: "#2e5aac",
-      backgroundColor: "#2e5aac",
-      borderWidth: 2,
+      borderColor: cores.curva,
+      backgroundColor: cores.curva,
+      borderWidth: 2.5,
       pointRadius: 0,
       spanGaps: false,
+      tension: 0.05,
     },
   ];
 
@@ -53,10 +72,12 @@ function renderizarGrafico(resposta) {
       label: "Limite",
       data: [{ x: resposta.ponto_grafico, y: resposta.valor_grafico }],
       showLine: false,
-      pointRadius: 6,
-      pointHoverRadius: 7,
-      backgroundColor: "#c0392b",
-      borderColor: "#c0392b",
+      pointRadius: 7,
+      pointHoverRadius: 9,
+      pointBorderWidth: 2,
+      pointBorderColor: "#ffffff",
+      backgroundColor: cores.marcador,
+      borderColor: cores.marcador,
     });
   }
 
@@ -70,18 +91,22 @@ function renderizarGrafico(resposta) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      animation: false,
+      animation: { duration: 400, easing: "easeOutQuart" },
       plugins: {
         legend: { display: false },
       },
       scales: {
         x: {
           type: "linear",
-          title: { display: true, text: "x" },
+          title: { display: true, text: "x", color: cores.texto },
+          ticks: { color: cores.texto },
+          grid: { color: cores.grade },
         },
         y: {
           type: "linear",
-          title: { display: true, text: "f(x)" },
+          title: { display: true, text: "f(x)", color: cores.texto },
+          ticks: { color: cores.texto },
+          grid: { color: cores.grade },
         },
       },
     },
