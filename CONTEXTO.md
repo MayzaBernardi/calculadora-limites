@@ -93,6 +93,8 @@ calculadora-limites/
 7. Página (formulário e passo a passo) — **FEITA**
 8. Gráfico — **FEITA**
 9. Testes de todos os tipos e revisão das explicações — **FEITA**
+10. Entrada por imagem (colar/enviar uma foto da conta; extração da função e
+    do ponto via API de visão do Gemini) — **A FAZER** (ver seção 9)
 
 ## 5. Estado atual
 
@@ -124,16 +126,26 @@ Situação das branches no GitHub:
   mescladas na `main` via PRs #14, #15 e #16. A dona do projeto abriu a
   página de verdade (backend + `http.server`) depois da Etapa 8 e seguiu
   sem reportar problema visual.
-- `feature/etapa-8-grafico`: Etapa 8 completa e com push feito (commits
-  `9be3f7d`, `a93e562`, `fbd92bf`); falta abrir e mesclar o PR.
-- `feature/etapa-9-testes-revisao`: criada a partir de
-  `feature/etapa-8-grafico` (ainda não mesclada). Última etapa do projeto.
-  Commits: `703c1f7` (README com os comandos de API e página, que
-  faltavam), `2709e62` (corrige passos "Resultado" duplicados e o
-  confronto para produto de fatores oscilantes — achados da varredura
-  final do `revisor-matematico`, cruzando todas as técnicas) e a
-  atualização deste `CONTEXTO.md`. Falta o `git push` e, se quiserem,
-  abrir o PR (depois de mesclar as Etapas 8 e 9, nessa ordem).
+- `feature/etapa-8-grafico` e `feature/etapa-9-testes-revisao`: Etapas 8 e 9
+  completas e **já mescladas na `main` via PR #17** (commit de merge
+  `655e487`). Todas as 9 etapas do projeto original estão, portanto,
+  completas e na `main`. Só falta apagar os remotos dessas branches, se
+  quiserem.
+- `feature/melhoria-visual-interativa` (nova, fora das 9 etapas originais):
+  trabalho extra pedido depois do fim da Etapa 9 — redesign visual do
+  frontend (tema claro/escuro, animações, microinterações, cartões com
+  sombra), feito pelo agente `frontend-web` e revisado pela orquestradora
+  (diff lido por completo, `node --check` nos 3 arquivos JS, hashes SRI do
+  KaTeX/Chart.js confirmados com `openssl`, servidores reais no ar com
+  `curl` batendo no contrato de `/limite`). Commit `54f7cf7`, com push feito;
+  **sem PR aberto**, a pedido explícito (só mostrar o resultado primeiro).
+  Testando a página de verdade, a dona do projeto achou um bug: o indicador
+  de carregando ficava visível mesmo antes de calcular qualquer coisa,
+  porque a regra `.carregando { display: flex }` tinha a mesma
+  especificidade do `[hidden] { display: none }` do navegador e vinha depois
+  no CSS — corrigido para `.carregando:not([hidden])`. Esse ajuste está só
+  no diretório de trabalho (não commitado ainda), aguardando a dona
+  confirmar que ficou certo antes do commit.
 
 Não presuma: rode `git fetch` e confira `git log --oneline --graph --all`.
 
@@ -484,21 +496,56 @@ a entrada, se sobrar tempo.
 
 ## 9. Próximo passo
 
-**Todas as 9 etapas estão completas.** Etapas 5, 6 e 7 já mescladas na
-`main` (PRs #14, #15 e #16). Faltam só os pushes e PRs de
-`feature/etapa-8-grafico` (já com push feito, falta abrir o PR) e
-`feature/etapa-9-testes-revisao` (branch atual; falta `git push`), nessa
-ordem (a 9 depende da 8). Não há próxima etapa de desenvolvimento prevista
-no projeto original — o que resta é trabalho de revisão humana:
+**Todas as 9 etapas do projeto original estão completas e mescladas na
+`main`** (PR #17 fechou a Etapa 9; confirme com
+`git log --oneline --graph --all`). Testes do backend passando (582,
+`cd backend && .venv/bin/pytest -q`). Pendências pequenas, sem urgência:
 
-- Mesclar os PRs pendentes (8 e 9, nessa ordem).
-- Abrir a página de novo depois de mesclar tudo, para uma última confirmação
-  visual com o motor já sem os passos duplicados e com o confronto corrigido
-  (ex.: `x^x` em `0`, ou `(1+1/x)^(2x)` em `infinito`, que antes mostravam
-  "Resultado" repetido).
-- Se quiserem, apagar as branches remotas já mescladas (Etapas 2, 3, 4; e,
-  depois de mescladas, 5, 6, 7, 8, 9).
+- Se quiserem, apagar as branches remotas já mescladas (Etapas 2 a 9).
 - Qualquer lacuna documentada na seção 5 ("Limitações conhecidas") pode virar
   trabalho futuro, mas nenhuma delas afeta a correção do que já está pronto
   (o motor nunca afirma um valor errado; só fica honesto "sem concluir" nos
   casos fora de escopo).
+
+Depois do fim da Etapa 9, a dona do projeto pediu dois pontos extras, fora do
+plano original:
+
+**1. Melhoria visual do frontend (em andamento).** Branch
+`feature/melhoria-visual-interativa`, commit `54f7cf7`, push feito, sem PR
+aberto ainda (a pedido explícito). Falta: confirmar que a correção do
+indicador de carregando (`.carregando:not([hidden])`, ainda não commitada —
+ver seção 5) ficou boa, aí commitar, e então perguntar se já pode abrir o PR.
+
+**2. Etapa 10 (nova, a fazer): entrada por imagem.** A pessoa cola ou envia
+uma foto/print de uma conta de limite feita no papel; o backend extrai a
+função e o ponto com a API de visão do Gemini (a dona já tem uma chave) e
+segue o fluxo normal — `ler_funcao`/`ler_ponto` (`entrada.py`) validam o que
+o Gemini devolveu exatamente como validam hoje a digitação manual, depois
+`resolver()` roda sem mudanças, devolvendo o mesmo contrato de `/limite`.
+
+Decisão de segurança já tomada (não é negociável): a chamada ao Gemini roda
+**só no backend**, com a chave em variável de ambiente — nunca no frontend.
+Hoje o projeto não tem nenhum segredo no lado do cliente (HTML/CSS/JS puro,
+sem build); se a chamada fosse do navegador, a chave ficaria visível no
+DevTools de qualquer pessoa.
+
+Ainda falta decidir/implementar (nenhuma branch nem código ainda):
+
+- Endpoint novo (ex. `POST /limite/imagem`, recebendo a imagem via multipart
+  ou base64) em `backend/app/rotas/`.
+- Prompt para o Gemini devolver função e ponto como texto simples, no
+  formato que `ler_funcao`/`ler_ponto` já aceitam (ou um passo de
+  normalização antes de entregar a eles).
+- Tratamento de erro em português quando a imagem não tem uma conta legível,
+  quando o Gemini devolve algo que não valida em `entrada.py`, ou quando a
+  chamada ao Gemini falha/não responde a tempo (nome e local da variável de
+  ambiente da chave ainda não escolhidos; não comitar a chave em nenhuma
+  hipótese — vai para `.gitignore` como `.env`, igual o resto do projeto).
+- Na página: um jeito de colar (Ctrl+V com imagem) ou escolher um arquivo,
+  mostrar uma pré-visualização, e chamar o endpoint novo em vez de
+  `/limite` quando houver imagem — reaproveitando a exibição de resultado
+  que já existe em `js/passos.js`.
+- Como as outras etapas: branch própria (`feature/etapa-10-entrada-imagem`,
+  a partir da `main` atualizada), contrato fechado primeiro com o
+  `api-backend` antes de acionar o `frontend-web`, e teste de integração de
+  verdade (servidor no ar, imagem real) antes de dar por concluída.

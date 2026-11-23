@@ -54,7 +54,7 @@ function criarBlocoLateral(titulo, valor) {
 
 function renderizarResultado(resposta) {
   const bloco = document.createElement("div");
-  bloco.className = "bloco-resultado";
+  bloco.className = "bloco-resultado aparecer";
 
   const h2 = document.createElement("h2");
 
@@ -89,6 +89,7 @@ function renderizarResultado(resposta) {
 
 function renderizarPassos(passos) {
   const secao = document.createElement("div");
+  secao.className = "aparecer";
 
   const titulo = document.createElement("h2");
   titulo.className = "titulo-secao-passos";
@@ -98,9 +99,12 @@ function renderizarPassos(passos) {
   const lista = document.createElement("ol");
   lista.className = "lista-passos";
 
-  passos.forEach((passo) => {
+  passos.forEach((passo, indice) => {
     const item = document.createElement("li");
     item.className = "passo";
+    // Atraso crescente só para o efeito visual de entrada escalonada;
+    // nenhum dado da API entra aqui, é só a posição do passo na lista.
+    item.style.setProperty("--indice", indice);
 
     const tituloPasso = document.createElement("div");
     tituloPasso.className = "passo-titulo";
