@@ -232,7 +232,7 @@ button:disabled {
 }
 
 /* Indicador de carregando */
-.carregando {
+.carregando:not([hidden]) {
   display: flex;
   align-items: center;
   gap: 0.6rem;
