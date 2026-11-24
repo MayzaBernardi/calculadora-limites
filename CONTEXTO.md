@@ -94,7 +94,8 @@ calculadora-limites/
 8. Gráfico — **FEITA**
 9. Testes de todos os tipos e revisão das explicações — **FEITA**
 10. Entrada por imagem (colar/enviar uma foto da conta; extração da função e
-    do ponto via API de visão do Gemini) — **A FAZER** (ver seção 9)
+    do ponto via API de visão do Gemini) — **FEITA** (branch
+    `feature/etapa-10-entrada-imagem`, ainda sem PR; ver seção 9)
 
 ## 5. Estado atual
 
@@ -131,29 +132,27 @@ Situação das branches no GitHub:
   `655e487`). Todas as 9 etapas do projeto original estão, portanto,
   completas e na `main`. Só falta apagar os remotos dessas branches, se
   quiserem.
-- `feature/melhoria-visual-interativa` (nova, fora das 9 etapas originais):
-  trabalho extra pedido depois do fim da Etapa 9 — redesign visual do
-  frontend (tema claro/escuro, animações, microinterações, cartões com
-  sombra), feito pelo agente `frontend-web` e revisado pela orquestradora
-  (diff lido por completo, `node --check` nos 3 arquivos JS, hashes SRI do
-  KaTeX/Chart.js confirmados com `openssl`, servidores reais no ar com
-  `curl` batendo no contrato de `/limite`). Commit `54f7cf7`, com push feito;
-  **sem PR aberto**, a pedido explícito (só mostrar o resultado primeiro).
-  Testando a página de verdade, a dona do projeto achou um bug: o indicador
-  de carregando ficava visível mesmo antes de calcular qualquer coisa,
-  porque a regra `.carregando { display: flex }` tinha a mesma
-  especificidade do `[hidden] { display: none }` do navegador e vinha depois
-  no CSS — corrigido para `.carregando:not([hidden])`. Esse ajuste está só
-  no diretório de trabalho (não commitado ainda), aguardando a dona
-  confirmar que ficou certo antes do commit.
+- `feature/melhoria-visual-interativa`: redesign visual do frontend (tema
+  claro/escuro, animações, microinterações, cartões com sombra), mais a
+  correção do indicador de carregando que ficava visível antes de calcular
+  (`.carregando:not([hidden])`, achada testando a página de verdade). PR
+  #18, **já mesclado na `main`** (commit de merge `3bd278d`). Só falta
+  apagar o remoto, se quiserem.
+- `feature/etapa-10-entrada-imagem`: Etapa 10 completa (backend e
+  frontend — detalhes na seção 9), push feito, **sem PR aberto ainda**
+  (decisão pendente).
 
 Não presuma: rode `git fetch` e confira `git log --oneline --graph --all`.
 
 Ambiente: `backend/.venv` já existe e é ignorado pelo git. Se faltar, rode
 `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` dentro de
-`backend/` (no Ubuntu pode ser preciso `apt install python3.12-venv`). Testes:
-`cd backend && .venv/bin/pytest -q` (hoje: 582 passando, em cerca de 2 min;
-cada limite roda em processo filho e alguns testes esperam o timeout de 3 s).
+`backend/` (no Ubuntu pode ser preciso `apt install python3.12-venv`). Requer
+também `GEMINI_API_KEY` em `backend/.env` para a rota `/limite/imagem`
+funcionar de verdade (opcional para rodar os testes — a suíte nunca depende
+da chave real, ver seção 9). Testes: `cd backend && .venv/bin/pytest -q`
+(hoje: 588 passando — 582 do motor/API original + 6 de `/limite/imagem` —,
+em cerca de 2-3 min; cada limite roda em processo filho e alguns testes
+esperam o timeout de 3 s).
 
 **Código em `backend/app/motor/` (fim da Etapa 9):**
 
@@ -508,44 +507,68 @@ a entrada, se sobrar tempo.
   casos fora de escopo).
 
 Depois do fim da Etapa 9, a dona do projeto pediu dois pontos extras, fora do
-plano original:
+plano original. Os dois estão implementados e testados; falta só decidir
+sobre os PRs.
 
-**1. Melhoria visual do frontend (em andamento).** Branch
-`feature/melhoria-visual-interativa`, commit `54f7cf7`, push feito, sem PR
-aberto ainda (a pedido explícito). Falta: confirmar que a correção do
-indicador de carregando (`.carregando:not([hidden])`, ainda não commitada —
-ver seção 5) ficou boa, aí commitar, e então perguntar se já pode abrir o PR.
+**1. Melhoria visual do frontend — concluída e já mesclada.** Tema
+claro/escuro, animações, microinterações, cartões com sombra. PR #18,
+mesclado na `main` (commit de merge `3bd278d`), incluindo a correção do
+indicador de carregando que ficava visível antes de calcular
+(`.carregando:not([hidden])`, achada testando a página de verdade).
 
-**2. Etapa 10 (nova, a fazer): entrada por imagem.** A pessoa cola ou envia
-uma foto/print de uma conta de limite feita no papel; o backend extrai a
-função e o ponto com a API de visão do Gemini (a dona já tem uma chave) e
-segue o fluxo normal — `ler_funcao`/`ler_ponto` (`entrada.py`) validam o que
-o Gemini devolveu exatamente como validam hoje a digitação manual, depois
-`resolver()` roda sem mudanças, devolvendo o mesmo contrato de `/limite`.
+**2. Etapa 10 — entrada por imagem (concluída, sem PR ainda).** Branch
+`feature/etapa-10-entrada-imagem`, criada a partir da `main` (antes do PR
+#18) e depois atualizada com `git merge main` para já incluir o redesign
+visual — dois commits:
 
-Decisão de segurança já tomada (não é negociável): a chamada ao Gemini roda
-**só no backend**, com a chave em variável de ambiente — nunca no frontend.
-Hoje o projeto não tem nenhum segredo no lado do cliente (HTML/CSS/JS puro,
-sem build); se a chamada fosse do navegador, a chave ficaria visível no
-DevTools de qualquer pessoa.
+- `744eb93` (backend, agente `api-backend`): rota nova `POST /limite/imagem`
+  (multipart, campo `imagem`, até 5 MB, PNG/JPEG/WEBP). `app/visao/gemini.py`
+  chama o Gemini (SDK `google-genai`, modelo `gemini-3.6-flash` — escolhido
+  testando de verdade com a chave: `gemini-3.8-flash` deu 503 de sobrecarga,
+  `gemini-2.5-flash`/`2.0-flash` estão desativados para essa chave) com
+  saída estruturada (`response_schema`) pedindo JSON `{funcao, ponto}` na
+  sintaxe que `entrada.py` já aceita. Cliente do Gemini só é criado dentro
+  da função (nunca no nível do módulo), para a API e os testes
+  funcionarem sem `GEMINI_API_KEY` configurada; sem a chave, a rota devolve
+  500 em português sem derrubar o resto da API. `app/rotas/limite.py` ganhou
+  `montar_resposta()` (extraída de `calcular_limite`), reaproveitada pelas
+  duas rotas a partir do ponto em que função e ponto já são `sp.Expr` — o
+  campo `entrada` da resposta ecoa o que foi reconhecido na imagem, não um
+  texto fixo. `main.py` chama `load_dotenv()` no início (caminho fixo,
+  não quebra se `backend/.env` não existir). `backend/.env.example` documenta
+  a variável (sem a chave de verdade). 6 testes novos em `test_api.py`,
+  todos com `monkeypatch` na extração (nenhum depende de rede/chave real).
+  588 testes passando no total.
+- `2c67b37` (frontend, agente `frontend-web`): cartão novo "Calcular a
+  partir de uma foto", abaixo do formulário de texto (que não mudou nada).
+  Três jeitos de dar a imagem: `input[type=file]` nativo, colar com Ctrl+V
+  (listener no `document`) e arrastar-e-soltar (extra). Pré-visualização
+  antes de calcular, com botão de remover e outro, separado e visualmente
+  diferente do "Calcular" de texto, para "Calcular pela imagem". `js/api.js`
+  ganhou `calcularLimitePorImagem()` ao lado de `calcularLimite` (intocada);
+  `js/passos.js` ganhou um parâmetro opcional em `exibirResposta()` que, só
+  no fluxo de imagem, mostra "Reconhecemos na imagem: f(x) = ..., x → ..."
+  antes do resultado (sempre `textContent`, nunca `innerHTML`); `js/imagem.js`
+  (novo) cuida de seleção/validação no cliente/pré-visualização, sem
+  duplicar renderização. `definirCarregando` (texto) e a lógica equivalente
+  do fluxo de imagem se desabilitam mutuamente, para não disparar os dois
+  cálculos ao mesmo tempo.
 
-Ainda falta decidir/implementar (nenhuma branch nem código ainda):
+Decisão de segurança já aplicada (não é negociável): a chamada ao Gemini
+roda só no backend, chave em variável de ambiente, nunca exposta ao
+frontend.
 
-- Endpoint novo (ex. `POST /limite/imagem`, recebendo a imagem via multipart
-  ou base64) em `backend/app/rotas/`.
-- Prompt para o Gemini devolver função e ponto como texto simples, no
-  formato que `ler_funcao`/`ler_ponto` já aceitam (ou um passo de
-  normalização antes de entregar a eles).
-- Tratamento de erro em português quando a imagem não tem uma conta legível,
-  quando o Gemini devolve algo que não valida em `entrada.py`, ou quando a
-  chamada ao Gemini falha/não responde a tempo (nome e local da variável de
-  ambiente da chave ainda não escolhidos; não comitar a chave em nenhuma
-  hipótese — vai para `.gitignore` como `.env`, igual o resto do projeto).
-- Na página: um jeito de colar (Ctrl+V com imagem) ou escolher um arquivo,
-  mostrar uma pré-visualização, e chamar o endpoint novo em vez de
-  `/limite` quando houver imagem — reaproveitando a exibição de resultado
-  que já existe em `js/passos.js`.
-- Como as outras etapas: branch própria (`feature/etapa-10-entrada-imagem`,
-  a partir da `main` atualizada), contrato fechado primeiro com o
-  `api-backend` antes de acionar o `frontend-web`, e teste de integração de
-  verdade (servidor no ar, imagem real) antes de dar por concluída.
+Verificação feita pela orquestradora (não só pelos agentes): 588 testes
+(`cd backend && .venv/bin/pytest -q`); chamada real de ponta a ponta com os
+dois servidores no ar — imagens de teste geradas com PIL (fora do repo),
+reconhecidas e resolvidas certo (`(x²-4)/(x-2)` em `2` → 4,
+`(1-cos x)/x²` em `0` → 1/2, `(3x²+1)/(x²+5)` em `+∞` → 3); tipo de
+arquivo inválido e imagem maior que 5 MB devolvendo 400; chave ausente
+devolvendo 500 sem derrubar `/limite` de texto; réplica exata em Node da
+chamada `fetch`+`FormData` que `js/api.js` faz, contra o backend real, para
+confirmar que o nome do campo (`imagem`) e a ausência de `Content-Type`
+manual (o navegador define o boundary do multipart sozinho) batem.
+
+Falta: decidir sobre o PR de `feature/etapa-10-entrada-imagem` (perguntar
+antes de abrir/mesclar, como sempre) e, se quiserem, apagar as branches
+remotas já mescladas.
