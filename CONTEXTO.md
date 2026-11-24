@@ -558,6 +558,21 @@ Decisão de segurança já aplicada (não é negociável): a chamada ao Gemini
 roda só no backend, chave em variável de ambiente, nunca exposta ao
 frontend.
 
+Achado testando a página de verdade (commit `7c705d3`): digitar uma conta
+sem parênteses em volta do numerador/denominador (ex.
+`sen x + sen 3x + sen 6x / x + sen x`) dá um valor diferente do esperado —
+não por bug do motor (a precedência padrão, divisão antes de soma, é a
+correta e bate com `sympy.limit` puro), mas porque essa notação de uma
+linha só não representa a fração de duas camadas que a pessoa tinha em
+mente. Isso é um risco real para a Etapa 10: se a foto mostra uma fração de
+verdade (traço horizontal) com mais de um termo em cima e/ou embaixo, o
+Gemini precisa saber que tem que acrescentar parênteses ao achatar isso em
+texto. O `PROMPT` em `app/visao/gemini.py` ganhou uma regra explícita sobre
+isso, com um exemplo nesse exato formato — testado de novo com uma imagem
+de fração desenhada com traço horizontal (PIL, fora do repo): o Gemini
+passou a devolver `(sen(x)+sen(3x)+sen(6x))/(x+sen(x))`, resolvido certo
+(valor 5, conferido com `sympy.limit`).
+
 Verificação feita pela orquestradora (não só pelos agentes): 588 testes
 (`cd backend && .venv/bin/pytest -q`); chamada real de ponta a ponta com os
 dois servidores no ar — imagens de teste geradas com PIL (fora do repo),
