@@ -128,8 +128,50 @@ function renderizarPassos(passos) {
   return secao;
 }
 
-function exibirResposta(resposta) {
+/**
+ * Monta o aviso "Reconhecemos: f(x) = ..., x → ..." exibido quando o
+ * resultado vem da entrada por imagem. `entrada` é o eco que a API devolve
+ * (o que o Gemini leu na foto); todo o texto dinâmico entra via
+ * textContent, nunca innerHTML.
+ */
+function criarBlocoReconhecimento(entrada) {
+  const div = document.createElement("div");
+  div.className = "bloco-reconhecimento aparecer";
+
+  const paragrafo = document.createElement("p");
+
+  const rotulo = document.createElement("strong");
+  rotulo.textContent = "Reconhecemos na imagem: ";
+  paragrafo.appendChild(rotulo);
+
+  const trechoFuncao = document.createElement("span");
+  trechoFuncao.className = "reconhecimento-valor";
+  trechoFuncao.textContent = "f(x) = " + entrada.funcao;
+  paragrafo.appendChild(trechoFuncao);
+
+  paragrafo.appendChild(document.createTextNode(", x → "));
+
+  const trechoPonto = document.createElement("span");
+  trechoPonto.className = "reconhecimento-valor";
+  trechoPonto.textContent = entrada.ponto;
+  paragrafo.appendChild(trechoPonto);
+
+  div.appendChild(paragrafo);
+
+  const dica = document.createElement("p");
+  dica.className = "reconhecimento-dica";
+  dica.textContent =
+    "Confira se a leitura está correta. Se não estiver, digite a função manualmente acima.";
+  div.appendChild(dica);
+
+  return div;
+}
+
+function exibirResposta(resposta, opcoes = {}) {
   limparResultado();
+  if (opcoes.mostrarReconhecimento) {
+    areaResultado.appendChild(criarBlocoReconhecimento(resposta.entrada));
+  }
   areaResultado.appendChild(renderizarResultado(resposta));
   if (resposta.grafico && resposta.grafico.pontos && resposta.grafico.pontos.length > 0) {
     areaResultado.appendChild(renderizarGrafico(resposta));
@@ -141,6 +183,11 @@ function exibirResposta(resposta) {
 
 function definirCarregando(carregando) {
   botaoCalcular.disabled = carregando;
+  // Impede disparar os dois cálculos (texto e imagem) ao mesmo tempo;
+  // botaoCalcularImagem só existe se js/imagem.js (Etapa 10) estiver carregado.
+  if (typeof botaoCalcularImagem !== "undefined") {
+    botaoCalcularImagem.disabled = carregando || !arquivoImagemAtual;
+  }
   indicadorCarregando.hidden = !carregando;
 }
 
