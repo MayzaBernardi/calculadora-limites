@@ -71,6 +71,97 @@
     <button type="submit" id="botao-calcular">Calcular</button>
   </form>
 
+  <div class="teclado-wrapper">
+    <button
+      type="button"
+      id="botao-alternar-teclado"
+      class="botao-alternar-teclado"
+      aria-expanded="false"
+      aria-controls="teclado-simbolos"
+    >
+      ⌨ Mostrar teclado de símbolos
+    </button>
+
+    <div id="teclado-simbolos" class="teclado-simbolos cartao" hidden>
+      <h2 class="teclado-titulo-painel">Teclado de símbolos</h2>
+      <p class="teclado-dica">
+        Clique em um campo (Função ou x tende a) e depois nos botões abaixo
+        para montar a expressão sem precisar digitar a sintaxe de cor.
+      </p>
+
+      <div class="teclado-grupo">
+        <h3 class="teclado-rotulo-grupo">Funções comuns</h3>
+        <div class="teclado-grade">
+          <button type="button" class="botao-teclado" data-prefixo="sen(" data-sufixo=")" aria-label="seno">sen</button>
+          <button type="button" class="botao-teclado" data-prefixo="cos(" data-sufixo=")" aria-label="cosseno">cos</button>
+          <button type="button" class="botao-teclado" data-prefixo="tg(" data-sufixo=")" aria-label="tangente">tg</button>
+          <button type="button" class="botao-teclado" data-prefixo="ln(" data-sufixo=")" aria-label="logaritmo natural">ln</button>
+          <button type="button" class="botao-teclado" data-prefixo="raiz(" data-sufixo=")" aria-label="raiz quadrada">raiz</button>
+          <button type="button" class="botao-teclado" data-prefixo="|" data-sufixo="|" aria-label="valor absoluto (módulo)">| |</button>
+        </div>
+      </div>
+
+      <div class="teclado-grupo">
+        <h3 class="teclado-rotulo-grupo">Mais funções</h3>
+        <div class="teclado-grade">
+          <button type="button" class="botao-teclado" data-prefixo="arcsen(" data-sufixo=")" aria-label="arco seno">arcsen</button>
+          <button type="button" class="botao-teclado" data-prefixo="arccos(" data-sufixo=")" aria-label="arco cosseno">arccos</button>
+          <button type="button" class="botao-teclado" data-prefixo="arctg(" data-sufixo=")" aria-label="arco tangente">arctg</button>
+          <button type="button" class="botao-teclado" data-prefixo="piso(" data-sufixo=")" aria-label="função piso (floor)">piso</button>
+          <button type="button" class="botao-teclado" data-prefixo="teto(" data-sufixo=")" aria-label="função teto (ceiling)">teto</button>
+        </div>
+      </div>
+
+      <div class="teclado-grupo">
+        <h3 class="teclado-rotulo-grupo">Parênteses e operadores</h3>
+        <div class="teclado-grade">
+          <button type="button" class="botao-teclado" data-inserir="(" aria-label="abre parêntese">(</button>
+          <button type="button" class="botao-teclado" data-inserir=")" aria-label="fecha parêntese">)</button>
+          <button type="button" class="botao-teclado" data-inserir="^" aria-label="potência">^</button>
+          <button type="button" class="botao-teclado" data-inserir="*" aria-label="multiplicação">*</button>
+          <button type="button" class="botao-teclado" data-inserir="/" aria-label="divisão">/</button>
+          <button type="button" class="botao-teclado" data-inserir="+" aria-label="soma">+</button>
+          <button type="button" class="botao-teclado" data-inserir="-" aria-label="subtração">-</button>
+        </div>
+      </div>
+
+      <div class="teclado-grupo">
+        <h3 class="teclado-rotulo-grupo">Constantes e variável</h3>
+        <div class="teclado-grade">
+          <button type="button" class="botao-teclado" data-inserir="x" aria-label="variável x">x</button>
+          <button type="button" class="botao-teclado" data-inserir="π" aria-label="constante pi">π</button>
+          <button type="button" class="botao-teclado" data-inserir="e" aria-label="número de Euler (e)">e</button>
+          <button type="button" class="botao-teclado" data-inserir="infinito" aria-label="infinito">∞</button>
+        </div>
+      </div>
+
+      <div class="teclado-grupo">
+        <h3 class="teclado-rotulo-grupo">Números</h3>
+        <div class="teclado-grade">
+          <button type="button" class="botao-teclado" data-inserir="0">0</button>
+          <button type="button" class="botao-teclado" data-inserir="1">1</button>
+          <button type="button" class="botao-teclado" data-inserir="2">2</button>
+          <button type="button" class="botao-teclado" data-inserir="3">3</button>
+          <button type="button" class="botao-teclado" data-inserir="4">4</button>
+          <button type="button" class="botao-teclado" data-inserir="5">5</button>
+          <button type="button" class="botao-teclado" data-inserir="6">6</button>
+          <button type="button" class="botao-teclado" data-inserir="7">7</button>
+          <button type="button" class="botao-teclado" data-inserir="8">8</button>
+          <button type="button" class="botao-teclado" data-inserir="9">9</button>
+          <button type="button" class="botao-teclado" data-inserir="." aria-label="ponto decimal">.</button>
+        </div>
+      </div>
+
+      <div class="teclado-grupo">
+        <h3 class="teclado-rotulo-grupo">Apagar e limpar</h3>
+        <div class="teclado-grade teclado-grade-controles">
+          <button type="button" class="botao-teclado" data-acao="apagar" aria-label="apagar caractere anterior">⌫</button>
+          <button type="button" class="botao-teclado botao-teclado-limpar" data-acao="limpar" aria-label="limpar campo inteiro">C</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <p class="separador-ou" role="presentation">ou</p>
 
   <div id="cartao-imagem" class="cartao cartao-imagem">
@@ -125,6 +216,7 @@
 <script src="js/passos.js"></script>
 <script src="js/grafico.js"></script>
 <script src="js/imagem.js"></script>
+<script src="js/teclado.js"></script>
 <script>
   // Sincroniza o rótulo do botão com o tema já aplicado (ver script no
   // <head>) e cuida só do clique. Nenhum dado da API entra aqui.
