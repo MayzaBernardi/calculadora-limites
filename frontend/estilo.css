@@ -231,6 +231,179 @@ button:disabled {
   cursor: not-allowed;
 }
 
+/* Separador entre os dois jeitos de entrada (texto / imagem) */
+.separador-ou {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: -0.5rem 0 1.25rem;
+  color: var(--cor-texto-suave);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.separador-ou::before,
+.separador-ou::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--cor-borda);
+}
+
+/* Cartão de entrada por imagem */
+.cartao-imagem {
+  padding: 1.5rem;
+  margin: 0 0 1.75rem;
+}
+
+.titulo-cartao-imagem {
+  margin: 0 0 0.35rem;
+  font-size: 1.1rem;
+}
+
+.subtitulo-imagem {
+  margin: 0 0 1rem;
+  color: var(--cor-texto-suave);
+}
+
+.subtitulo-imagem kbd {
+  font-family: inherit;
+  font-size: 0.85em;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--cor-borda);
+  border-radius: 4px;
+  background: var(--cor-fundo-fim);
+}
+
+.area-imagem {
+  border: 1.5px dashed var(--cor-borda);
+  border-radius: var(--raio-pequeno);
+  padding: 1rem;
+  transition: border-color var(--transicao), box-shadow var(--transicao);
+}
+
+.area-imagem-arrastando {
+  border-color: var(--cor-destaque);
+  box-shadow: var(--sombra-foco);
+}
+
+.campo-imagem .campo-imagem-input {
+  font-family: inherit;
+  color: var(--cor-texto-suave);
+  font-size: 0.95rem;
+}
+
+/* Estiliza só o botão nativo do input[type=file], mantendo o campo
+   totalmente acessível (foco visível e leitor de tela já funcionam, sem
+   nenhuma marcação extra). */
+.campo-imagem-input::file-selector-button {
+  margin-right: 0.75rem;
+  padding: 0.55rem 1rem;
+  border: none;
+  border-radius: var(--raio-pequeno);
+  background: linear-gradient(120deg, var(--cor-destaque), var(--cor-destaque-escuro));
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: filter var(--transicao);
+}
+
+.campo-imagem-input::file-selector-button:hover {
+  filter: brightness(1.08);
+}
+
+.previa-imagem {
+  margin-top: 1.1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+}
+
+.previa-imagem-img {
+  max-width: 160px;
+  max-height: 160px;
+  width: auto;
+  height: auto;
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio-pequeno);
+  object-fit: contain;
+  background: var(--cor-fundo-fim);
+}
+
+.previa-imagem-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.botao-secundario,
+.botao-imagem {
+  padding: 0.65rem 1.2rem;
+  border-radius: var(--raio-pequeno);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform var(--transicao), box-shadow var(--transicao), filter var(--transicao), border-color var(--transicao), color var(--transicao);
+}
+
+.botao-secundario {
+  background: transparent;
+  border: 1.5px solid var(--cor-borda);
+  color: var(--cor-texto-suave);
+}
+
+.botao-secundario:hover:not(:disabled) {
+  border-color: var(--cor-erro-borda);
+  color: var(--cor-erro-borda);
+}
+
+/* Visualmente distinto do botão "Calcular" do formulário de texto (que é
+   preenchido): este fica contornado, para deixar claro que é uma ação
+   separada, mesmo reaproveitando a mesma cor de destaque. */
+.botao-imagem {
+  background: transparent;
+  border: 1.5px solid var(--cor-destaque);
+  color: var(--cor-destaque);
+}
+
+.botao-imagem:hover:not(:disabled) {
+  background: var(--cor-destaque);
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px -6px rgba(79, 70, 229, 0.35);
+}
+
+.botao-secundario:active:not(:disabled),
+.botao-imagem:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+}
+
+/* Aviso do que foi reconhecido na imagem, mostrado antes do resultado */
+.bloco-reconhecimento {
+  padding: 0.9rem 1.1rem;
+  margin: 1.5rem 0 0;
+  border-radius: var(--raio-pequeno);
+  border-left: 5px solid var(--cor-destaque);
+  background: linear-gradient(135deg, var(--cor-fundo-inicio), var(--cor-cartao-fundo) 85%);
+}
+
+.bloco-reconhecimento p {
+  margin: 0;
+}
+
+.bloco-reconhecimento .reconhecimento-dica {
+  margin-top: 0.35rem;
+  color: var(--cor-texto-suave);
+  font-size: 0.9rem;
+}
+
+.reconhecimento-valor {
+  font-weight: 600;
+}
+
 /* Indicador de carregando */
 .carregando:not([hidden]) {
   display: flex;
@@ -474,6 +647,16 @@ button:disabled {
 
   .botao-tema {
     align-self: flex-start;
+  }
+
+  .previa-imagem-acoes {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .botao-secundario,
+  .botao-imagem {
+    width: 100%;
   }
 }
 

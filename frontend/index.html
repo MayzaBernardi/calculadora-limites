@@ -71,6 +71,46 @@
     <button type="submit" id="botao-calcular">Calcular</button>
   </form>
 
+  <p class="separador-ou" role="presentation">ou</p>
+
+  <div id="cartao-imagem" class="cartao cartao-imagem">
+    <h2 class="titulo-cartao-imagem">Calcular a partir de uma foto</h2>
+    <p class="subtitulo-imagem">
+      Envie uma foto ou print de uma conta de limite feita no papel. Também é
+      possível colar a imagem da área de transferência com
+      <kbd>Ctrl</kbd>+<kbd>V</kbd>.
+    </p>
+
+    <div id="area-imagem" class="area-imagem">
+      <div class="campo campo-imagem">
+        <label for="campo-imagem">Imagem da conta de limite</label>
+        <input
+          type="file"
+          id="campo-imagem"
+          name="imagem"
+          accept="image/png,image/jpeg,image/webp"
+          class="campo-imagem-input"
+        >
+      </div>
+
+      <div id="previa-imagem" class="previa-imagem" hidden>
+        <img
+          id="previa-imagem-img"
+          class="previa-imagem-img"
+          alt="Pré-visualização da imagem escolhida para o cálculo"
+        >
+        <div class="previa-imagem-acoes">
+          <button type="button" id="botao-remover-imagem" class="botao-secundario">
+            Remover imagem
+          </button>
+          <button type="button" id="botao-calcular-imagem" class="botao-imagem" disabled>
+            Calcular pela imagem
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <p id="indicador-carregando" class="carregando" hidden role="status">
     <span class="spinner" aria-hidden="true"></span>
     <span>Calculando...</span>
@@ -84,6 +124,7 @@
 <script src="js/api.js"></script>
 <script src="js/passos.js"></script>
 <script src="js/grafico.js"></script>
+<script src="js/imagem.js"></script>
 <script>
   // Sincroniza o rótulo do botão com o tema já aplicado (ver script no
   // <head>) e cuida só do clique. Nenhum dado da API entra aqui.
