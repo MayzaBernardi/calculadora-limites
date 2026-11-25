@@ -231,6 +231,129 @@ button:disabled {
   cursor: not-allowed;
 }
 
+/* Teclado de símbolos: botão de alternância + painel escondido por padrão */
+.teclado-wrapper {
+  margin: -0.5rem 0 1.25rem;
+}
+
+.botao-alternar-teclado {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: transparent;
+  color: var(--cor-texto-suave);
+  border: 1.5px solid var(--cor-borda);
+  border-radius: var(--raio-pequeno);
+  padding: 0.6rem 1.1rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color var(--transicao), color var(--transicao), transform var(--transicao);
+}
+
+.botao-alternar-teclado:hover {
+  border-color: var(--cor-destaque);
+  color: var(--cor-destaque);
+}
+
+.botao-alternar-teclado:active {
+  transform: scale(0.98);
+}
+
+.botao-alternar-teclado[aria-expanded="true"] {
+  border-color: var(--cor-destaque);
+  color: var(--cor-destaque);
+}
+
+.teclado-simbolos {
+  padding: 1.25rem 1.5rem;
+  margin-top: 0.75rem;
+}
+
+.teclado-titulo-painel {
+  margin: 0 0 0.35rem;
+  font-size: 1.1rem;
+}
+
+.teclado-dica {
+  margin: 0 0 1.1rem;
+  color: var(--cor-texto-suave);
+  font-size: 0.9rem;
+}
+
+.teclado-grupo {
+  margin-bottom: 1rem;
+}
+
+.teclado-grupo:last-child {
+  margin-bottom: 0;
+}
+
+.teclado-rotulo-grupo {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--cor-texto-suave);
+}
+
+.teclado-grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(3.75rem, 1fr));
+  gap: 0.5rem;
+}
+
+.teclado-grade-controles {
+  grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
+  max-width: 14rem;
+}
+
+.botao-teclado {
+  padding: 0.5rem 0.4rem;
+  min-height: 2.5rem;
+  border: 1.5px solid var(--cor-borda);
+  border-radius: var(--raio-pequeno);
+  background: var(--cor-fundo-fim);
+  color: var(--cor-texto);
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.1;
+  cursor: pointer;
+  transition: border-color var(--transicao), color var(--transicao), background var(--transicao), transform var(--transicao);
+}
+
+.botao-teclado:hover {
+  border-color: var(--cor-destaque);
+  color: var(--cor-destaque);
+  background: var(--cor-cartao-fundo);
+}
+
+.botao-teclado:active {
+  transform: scale(0.95);
+}
+
+.botao-teclado:focus-visible {
+  outline: none;
+  border-color: var(--cor-foco);
+  box-shadow: var(--sombra-foco);
+}
+
+/* "Limpar campo" é uma ação maior que as demais teclas (apaga tudo de uma
+   vez); o aviso visual usa a mesma cor de alerta já definida no projeto. */
+.botao-teclado-limpar {
+  border-color: var(--cor-alerta-borda);
+  color: var(--cor-alerta-borda);
+}
+
+.botao-teclado-limpar:hover {
+  background: var(--cor-alerta-fundo);
+  border-color: var(--cor-alerta-borda);
+  color: var(--cor-alerta-borda);
+}
+
 /* Separador entre os dois jeitos de entrada (texto / imagem) */
 .separador-ou {
   display: flex;
@@ -658,6 +781,15 @@ button:disabled {
   .botao-imagem {
     width: 100%;
   }
+
+  .botao-alternar-teclado {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .teclado-grade {
+    grid-template-columns: repeat(auto-fill, minmax(3.4rem, 1fr));
+  }
 }
 
 @media (max-width: 480px) {
@@ -675,6 +807,25 @@ button:disabled {
 
   .grafico-container {
     height: min(300px, 50vh);
+  }
+
+  .teclado-simbolos {
+    padding: 1rem 1.1rem;
+  }
+
+  .teclado-grade {
+    grid-template-columns: repeat(auto-fill, minmax(2.9rem, 1fr));
+    gap: 0.4rem;
+  }
+
+  .teclado-grade-controles {
+    max-width: 100%;
+  }
+
+  .botao-teclado {
+    font-size: 0.85rem;
+    padding: 0.45rem 0.3rem;
+    min-height: 2.3rem;
   }
 }
 
