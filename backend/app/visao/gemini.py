@@ -36,21 +36,6 @@ Extraia duas informações e devolva como JSON:
 - "ponto": o valor para onde x tende: um número (inteiro, decimal ou \
 fração como 1/2), ou a palavra "infinito", ou "-infinito".
 
-REGRA CRÍTICA sobre frações (muito comum a imagem mostrar um traço \
-horizontal, com o numerador em cima e o denominador embaixo): nessa \
-sintaxe de uma linha só, a divisão "/" tem precedência maior que "+" e \
-"-", exatamente como em qualquer calculadora — ou seja, "a + b / c + d" \
-significa "a + (b/c) + d", NUNCA "(a+b)/(c+d)". Por isso, toda vez que o \
-numerador OU o denominador da fração na imagem tiver mais de um termo \
-(qualquer soma ou subtração), você PRECISA colocar parênteses em volta de \
-todo esse numerador e/ou de todo esse denominador ao escrever a fração em \
-uma linha só, mesmo que a imagem não desenhe parênteses nenhum (o traço \
-horizontal da fração já funciona como agrupamento visual, mas isso se \
-perde ao virar texto de uma linha — os parênteses são o único jeito de \
-preservar o agrupamento). Essa regra vale só para os termos que estão de \
-fato acima ou abaixo do MESMO traço de fração; não precisa adicionar \
-parênteses em outros lugares.
-
 Exemplos do formato esperado de saída:
 1. Imagem mostra "lim(x->2) (x^2-4)/(x-2)"
    => {"funcao": "(x^2-4)/(x-2)", "ponto": "2"}
@@ -60,10 +45,6 @@ Exemplos do formato esperado de saída:
    => {"funcao": "(1+1/x)^x", "ponto": "infinito"}
 4. Imagem mostra "lim(x->-inf) 1/x"
    => {"funcao": "1/x", "ponto": "-infinito"}
-5. Imagem mostra uma fração com "sen x + sen 3x + sen 6x" em cima do \
-traço e "x + sen x" embaixo, com "lim(x->0)" na frente — os dois lados \
-têm mais de um termo, então os dois precisam de parênteses:
-   => {"funcao": "(sen(x)+sen(3x)+sen(6x))/(x+sen(x))", "ponto": "0"}
 
 Responda somente com os dois campos pedidos, sem explicações."""
 
