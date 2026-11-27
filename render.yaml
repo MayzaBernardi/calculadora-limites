@@ -1,0 +1,35 @@
+services:
+  # Backend: API FastAPI (SymPy, resolvedor de limites).
+  - type: web
+    name: calculadora-limites-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    # /docs é a página de documentação que o próprio FastAPI já serve
+    # (Swagger UI); usamos como checagem de saúde para não precisar de
+    # uma rota extra só para isso.
+    healthCheckPath: /docs
+    envVars:
+      # Opcional: só necessária para a rota POST /limite/imagem (entrada
+      # por foto) funcionar de verdade; sem ela, a rota devolve erro 500
+      # em português, sem derrubar o resto da API (ver backend/app/visao/
+      # gemini.py). Preencha no painel do Render, não aqui.
+      - key: GEMINI_API_KEY
+        sync: false
+      # URL do site estático (serviço "calculadora-limites" abaixo),
+      # sem barra no final — preencha depois que ele estiver no ar, ex.:
+      # https://calculadora-limites.onrender.com
+      - key: ORIGENS_PERMITIDAS
+        sync: false
+
+  # Frontend: HTML/CSS/JS puros, sem build step.
+  - type: web
+    name: calculadora-limites
+    runtime: static
+    rootDir: frontend
+    branch: main
+    buildCommand: echo "sem build: HTML/CSS/JS puros"
+    staticPublishPath: .

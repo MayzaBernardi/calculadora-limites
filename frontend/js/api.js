@@ -1,6 +1,10 @@
 // Comunicação com a API da Calculadora de Limites.
-// Troque a porta/host aqui se o backend rodar em outro lugar.
-const API_URL = "http://127.0.0.1:8000";
+// Em localhost (desenvolvimento) aponta pro uvicorn local; fora disso (ex.:
+// o site publicado no Render), aponta pro backend hospedado — troque a URL
+// abaixo pela do seu Web Service no Render (ver render.yaml e README.md).
+const API_URL = ["localhost", "127.0.0.1"].includes(window.location.hostname)
+  ? "http://127.0.0.1:8000"
+  : "https://calculadora-limites-api.onrender.com";
 
 /**
  * Chama POST /limite. Em caso de sucesso devolve o corpo já em objeto

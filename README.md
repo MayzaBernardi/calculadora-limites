@@ -59,6 +59,41 @@ API por padrão; para usar outra porta, defina a variável de ambiente
 `uvicorn`. Se a API rodar em outro host/porta, ajuste a constante
 `API_URL` no topo de `frontend/js/api.js`.
 
+## Deploy no Render
+
+O repositório tem um `render.yaml` (Blueprint) que configura os dois
+serviços de uma vez:
+
+1. No [painel do Render](https://dashboard.render.com), **New +** →
+   **Blueprint**, aponte para este repositório (branch `main`) e confirme.
+   Isso cria:
+   - `calculadora-limites-api`: Web Service Python, a partir de `backend/`
+     (`pip install -r requirements.txt`, depois
+     `uvicorn app.main:app --host 0.0.0.0 --port $PORT`).
+   - `calculadora-limites`: Static Site, a partir de `frontend/`, sem build
+     step (HTML/CSS/JS puros).
+2. No serviço da API, preencha as variáveis de ambiente que o Render vai
+   pedir (ficam em branco no `render.yaml` de propósito, por serem
+   sensíveis ou dependerem da outra URL):
+   - `GEMINI_API_KEY`: opcional, só para a rota `/limite/imagem` (entrada
+     por foto) funcionar de verdade.
+   - `ORIGENS_PERMITIDAS`: a URL do site estático (passo 3), sem barra no
+     final.
+3. Depois que os dois estiverem no ar, pegue a URL de cada serviço (Render
+   mostra no topo da página de cada um) e:
+   - cole a URL do site estático em `ORIGENS_PERMITIDAS` no serviço da API
+     (o Render reinicia sozinho ao salvar);
+   - confira se a URL da API bate com a constante `API_URL` no topo de
+     `frontend/js/api.js` (por padrão aponta para
+     `https://calculadora-limites-api.onrender.com`, o nome do serviço no
+     `render.yaml`; se o Render tiver escolhido outro nome, porque o seu já
+     estava em uso, ajuste essa linha, commite e dê push — o site
+     redesenha sozinho a cada commit na branch configurada).
+
+No plano gratuito, os dois serviços "dormem" depois de um tempo sem uso e
+levam alguns segundos para acordar na primeira requisição seguinte (a tela
+de carregando da página cobre esse tempo normalmente).
+
 ## Etapas de desenvolvimento
 
 Cada etapa é desenvolvida em uma branch `feature/...` própria.
