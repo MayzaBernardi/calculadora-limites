@@ -640,5 +640,5 @@ servido pelo `http.server` já no ar em `127.0.0.1:5500` —
 (sem `display:none`/`opacity:0`/sobreposição) e screenshot confere o
 resultado batendo com o esperado.
 
-Falta: decidir sobre o PR de `feature/teclado-simbolos` (perguntar
-antes de abrir/mesclar, como sempre).
+Falta: decidir sobre o PR #22 do redesenho (perguntar antes de mesclar,
+como sempre).
