@@ -27,9 +27,35 @@
 
   --raio: 12px;
   --raio-pequeno: 8px;
+  --raio-tecla: 14px;
   --transicao: 0.2s ease;
 
   --fonte: "Segoe UI", system-ui, Roboto, Helvetica, Arial, sans-serif;
+  --fonte-mono: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+
+  /* Calculadora: "bezel" escuro do display, sempre escuro nos dois temas
+     (como o corpo de uma calculadora de verdade) — por isso não tem
+     equivalente redefinido no tema escuro abaixo. */
+  --cor-display-fundo: #14172c;
+  --cor-display-borda: #2b2f55;
+  --cor-display-texto: #f2f3fb;
+  --cor-display-texto-suave: #a7acc7;
+  --cor-display-divisor: rgba(255, 255, 255, 0.12);
+
+  /* Teclas da grade principal: um tom neutro único para números/funções/
+     constantes, e outro levemente diferente só para os operadores. */
+  --cor-tecla-fundo: #f4f5fb;
+  --cor-tecla-borda: #dde1ef;
+
+  --cor-tecla-operador-fundo: #eef1f6;
+  --cor-tecla-operador-borda: #cbd3e1;
+  --cor-tecla-operador-texto: #334155;
+
+  --sombra-tecla: 0 2px 0 rgba(31, 36, 48, 0.12), 0 1px 3px rgba(31, 36, 48, 0.08);
+  --sombra-tecla-ativa: 0 1px 0 rgba(31, 36, 48, 0.12);
+
+  /* Campos de entrada com cara de "display" (usado pelo campo de imagem) */
+  --cor-campo-display-fundo: #f4f5fb;
 }
 
 html[data-tema="escuro"] {
@@ -57,6 +83,21 @@ html[data-tema="escuro"] {
   --sombra-cartao: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
   --sombra-cartao-hover: 0 10px 25px -8px rgba(129, 140, 248, 0.35), 0 4px 10px -4px rgba(129, 140, 248, 0.2);
   --sombra-foco: 0 0 0 3px rgba(165, 180, 252, 0.35);
+
+  /* Teclas da grade principal (o display continua escuro nos dois temas:
+     ver --cor-display-* em :root, sem equivalente aqui de propósito). */
+  --cor-tecla-fundo: #1f2344;
+  --cor-tecla-borda: #343a63;
+
+  --cor-tecla-operador-fundo: #242843;
+  --cor-tecla-operador-borda: #3d4269;
+  --cor-tecla-operador-texto: #cbd3e8;
+
+  --sombra-tecla: 0 2px 0 rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.35);
+  --sombra-tecla-ativa: 0 1px 0 rgba(0, 0, 0, 0.4);
+
+  /* Campos de entrada com cara de "display" (usado pelo campo de imagem) */
+  --cor-campo-display-fundo: #13162e;
 }
 
 * {
@@ -161,6 +202,16 @@ form {
   margin: 1.75rem 0;
 }
 
+/* Formulário principal com cara de calculadora: display no topo, fileira
+   fina de extras e a grade de teclas, tudo em coluna (não na mesma linha
+   como o `form` genérico acima, pensado para rótulo + campo soltos). */
+.calculadora {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 1rem;
+}
+
 .campo {
   display: flex;
   flex-direction: column;
@@ -174,15 +225,19 @@ form {
   color: var(--cor-texto);
 }
 
+/* Fonte monoespaçada e fundo levemente diferente, para os campos lembrarem
+   o "display" de uma calculadora, sem perder a legibilidade de um formulário
+   comum (nada de tela preta monocromática). */
 .campo input {
   padding: 0.65rem 0.75rem;
   border: 1.5px solid var(--cor-borda);
   border-radius: var(--raio-pequeno);
-  font-size: 1rem;
-  font-family: inherit;
-  background: transparent;
+  font-size: 1.05rem;
+  font-family: var(--fonte-mono);
+  letter-spacing: 0.01em;
+  background: var(--cor-campo-display-fundo);
   color: var(--cor-texto);
-  transition: border-color var(--transicao), box-shadow var(--transicao);
+  transition: border-color var(--transicao), box-shadow var(--transicao), background var(--transicao);
 }
 
 .campo input::placeholder {
@@ -231,127 +286,216 @@ button:disabled {
   cursor: not-allowed;
 }
 
-/* Teclado de símbolos: botão de alternância + painel escondido por padrão */
-.teclado-wrapper {
-  margin: -0.5rem 0 1.25rem;
-}
-
-.botao-alternar-teclado {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  background: transparent;
-  color: var(--cor-texto-suave);
-  border: 1.5px solid var(--cor-borda);
+/* "Bezel" escuro com os dois campos de entrada, sempre com fundo escuro
+   nos dois temas do site (como o corpo de uma calculadora de verdade) —
+   por isso usa --cor-display-* em vez das variáveis gerais de tema. */
+.calculadora-display {
+  background: var(--cor-display-fundo);
+  border: 1px solid var(--cor-display-borda);
   border-radius: var(--raio-pequeno);
-  padding: 0.6rem 1.1rem;
-  font-size: 0.95rem;
+  padding: 0.85rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  box-shadow: inset 0 1px 6px rgba(0, 0, 0, 0.35);
+}
+
+.calculadora-linha-display {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
+  border-radius: 6px;
+  transition: box-shadow var(--transicao);
+}
+
+/* Anel de foco na linha inteira (o input por dentro fica sem borda própria,
+   para parecer texto no visor, não uma caixa de formulário). */
+.calculadora-linha-display:focus-within {
+  box-shadow: 0 0 0 2px var(--cor-foco);
+}
+
+/* Destaque PERMANENTE de qual dos dois campos vai receber a próxima tecla
+   clicada (ver teclado.js::marcarCampoAtivo) — ao contrário do anel de foco
+   acima, que some assim que uma tecla da grade é clicada (o foco passa pro
+   botão por um instante), este fica aceso o tempo todo, pra nunca ficar
+   ambíguo pra onde um clique no teclado vai. */
+.calculadora-linha-display--ativa {
+  box-shadow: 0 0 0 2px var(--cor-foco);
+}
+
+.calculadora-linha-display--ativa label {
+  color: var(--cor-destaque-2);
+}
+
+.calculadora-linha-display label {
+  font-size: 0.72rem;
   font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  transition: border-color var(--transicao), color var(--transicao), transform var(--transicao);
-}
-
-.botao-alternar-teclado:hover {
-  border-color: var(--cor-destaque);
-  color: var(--cor-destaque);
-}
-
-.botao-alternar-teclado:active {
-  transform: scale(0.98);
-}
-
-.botao-alternar-teclado[aria-expanded="true"] {
-  border-color: var(--cor-destaque);
-  color: var(--cor-destaque);
-}
-
-.teclado-simbolos {
-  padding: 1.25rem 1.5rem;
-  margin-top: 0.75rem;
-}
-
-.teclado-titulo-painel {
-  margin: 0 0 0.35rem;
-  font-size: 1.1rem;
-}
-
-.teclado-dica {
-  margin: 0 0 1.1rem;
-  color: var(--cor-texto-suave);
-  font-size: 0.9rem;
-}
-
-.teclado-grupo {
-  margin-bottom: 1rem;
-}
-
-.teclado-grupo:last-child {
-  margin-bottom: 0;
-}
-
-.teclado-rotulo-grupo {
-  margin: 0 0 0.5rem;
-  font-size: 0.8rem;
-  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--cor-texto-suave);
+  color: var(--cor-display-texto-suave);
 }
 
-.teclado-grade {
+.calculadora-linha-display input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  text-align: right;
+  font-family: var(--fonte-mono);
+  color: var(--cor-display-texto);
+  padding: 0.1rem 0;
+}
+
+.calculadora-linha-display input::placeholder {
+  color: var(--cor-display-texto-suave);
+  opacity: 0.8;
+}
+
+.calculadora-linha-display input:focus-visible {
+  outline: none;
+}
+
+/* Linha da função: a entrada principal, por isso maior que a do ponto. */
+.calculadora-linha-display--funcao input {
+  font-size: clamp(1.4rem, 5vw, 1.9rem);
+  font-weight: 600;
+}
+
+.calculadora-linha-display--ponto {
+  border-top: 1px solid var(--cor-display-divisor);
+  padding-top: 0.45rem;
+}
+
+.calculadora-linha-display--ponto input {
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+/* Grade principal: 4 colunas fixas, teclas com leve relevo (sombra
+   "elevando" do corpo da calculadora) e cantos bem arredondados, para
+   parecer uma tecla física, não um botão de formulário comum. */
+.calculadora-grade {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(3.75rem, 1fr));
-  gap: 0.5rem;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.55rem;
 }
 
-.teclado-grade-controles {
-  grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
-  max-width: 14rem;
-}
-
-.botao-teclado {
-  padding: 0.5rem 0.4rem;
-  min-height: 2.5rem;
-  border: 1.5px solid var(--cor-borda);
-  border-radius: var(--raio-pequeno);
-  background: var(--cor-fundo-fim);
+.tecla {
+  min-height: 3.1rem;
+  border: 1.5px solid var(--cor-tecla-borda);
+  border-radius: var(--raio-tecla);
+  background: var(--cor-tecla-fundo);
   color: var(--cor-texto);
   font-family: inherit;
-  font-size: 0.95rem;
+  font-size: 1.05rem;
   font-weight: 600;
   line-height: 1.1;
   cursor: pointer;
-  transition: border-color var(--transicao), color var(--transicao), background var(--transicao), transform var(--transicao);
+  box-shadow: var(--sombra-tecla);
+  transition: border-color var(--transicao), color var(--transicao), background var(--transicao),
+    transform var(--transicao), box-shadow var(--transicao);
 }
 
-.botao-teclado:hover {
+.tecla:hover {
   border-color: var(--cor-destaque);
   color: var(--cor-destaque);
-  background: var(--cor-cartao-fundo);
+  transform: translateY(-1px);
 }
 
-.botao-teclado:active {
-  transform: scale(0.95);
+/* Ao pressionar, a tecla "desce": sombra menor e um leve encolhimento,
+   simulando o relevo sendo afundado de verdade. */
+.tecla:active {
+  transform: scale(0.95) translateY(1px);
+  box-shadow: var(--sombra-tecla-ativa);
 }
 
-.botao-teclado:focus-visible {
+.tecla:focus-visible {
   outline: none;
   border-color: var(--cor-foco);
   box-shadow: var(--sombra-foco);
 }
 
-/* "Limpar campo" é uma ação maior que as demais teclas (apaga tudo de uma
-   vez); o aviso visual usa a mesma cor de alerta já definida no projeto. */
-.botao-teclado-limpar {
+/* Operadores (÷ × − +) num tom levemente diferente dos números/funções,
+   sem precisar de 4 cores de categoria como na versão anterior do teclado. */
+.tecla-operador {
+  background: var(--cor-tecla-operador-fundo);
+  border-color: var(--cor-tecla-operador-borda);
+  color: var(--cor-tecla-operador-texto);
+}
+
+/* "C" e "⌫" reaproveitam o mesmo tom de alerta sutil já usado no projeto,
+   por serem as únicas duas ações destrutivas da grade. */
+.tecla-limpar,
+.tecla-apagar {
   border-color: var(--cor-alerta-borda);
   color: var(--cor-alerta-borda);
 }
 
-.botao-teclado-limpar:hover {
+.tecla-limpar:hover,
+.tecla-apagar:hover {
   background: var(--cor-alerta-fundo);
   border-color: var(--cor-alerta-borda);
   color: var(--cor-alerta-borda);
+}
+
+/* "=" é a própria tecla de envio do formulário (type="submit", ver
+   #botao-calcular em button[type="submit"] acima): a mais chamativa da
+   grade, na cor de destaque do projeto — não a cor de laranja da
+   referência, para manter a identidade visual do site. O seletor com #id
+   é necessário para vencer a regra genérica de button[type="submit"]. */
+#botao-calcular.tecla-igual {
+  padding: 0;
+  min-height: 3.1rem;
+  background: var(--cor-destaque-escuro);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  box-shadow: 0 4px 12px -4px rgba(79, 70, 229, 0.5);
+}
+
+#botao-calcular.tecla-igual:hover:not(:disabled) {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px -6px rgba(79, 70, 229, 0.55);
+}
+
+#botao-calcular.tecla-igual:active:not(:disabled) {
+  transform: translateY(0) scale(0.95);
+  box-shadow: var(--sombra-tecla-ativa);
+}
+
+/* Garante o anel de foco visível mesmo sobre o fundo sólido do "=": sem
+   isso, a sombra permanente acima venceria a regra genérica de foco por
+   especificidade, só por causa do #id. */
+#botao-calcular.tecla-igual:focus-visible {
+  outline: none;
+  box-shadow: var(--sombra-foco), 0 4px 12px -4px rgba(79, 70, 229, 0.5);
+}
+
+/* Fileira fina de extras (equivalente visual à fileira de memória da
+   calculadora de referência), só com os 2 símbolos que ficaram fora da
+   grade principal. Visualmente mais discreta que as teclas da grade —
+   por isso vem depois de ".tecla" no arquivo: mesma especificidade
+   (uma classe), e a ordem de origem é o que garante que o fundo
+   transparente e a ausência de sombra daqui vençam o ".tecla" de cima. */
+.calculadora-extras {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.tecla-extra {
+  flex: 0 0 auto;
+  min-width: 3.4rem;
+  min-height: 2.15rem;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.85rem;
+  background: transparent;
+  border-color: var(--cor-borda);
+  color: var(--cor-texto-suave);
+  box-shadow: none;
 }
 
 /* Separador entre os dois jeitos de entrada (texto / imagem) */
@@ -760,10 +904,6 @@ button:disabled {
     align-items: stretch;
   }
 
-  button[type="submit"] {
-    width: 100%;
-  }
-
   .cabecalho {
     flex-direction: column;
   }
@@ -780,15 +920,6 @@ button:disabled {
   .botao-secundario,
   .botao-imagem {
     width: 100%;
-  }
-
-  .botao-alternar-teclado {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .teclado-grade {
-    grid-template-columns: repeat(auto-fill, minmax(3.4rem, 1fr));
   }
 }
 
@@ -809,23 +940,27 @@ button:disabled {
     height: min(300px, 50vh);
   }
 
-  .teclado-simbolos {
-    padding: 1rem 1.1rem;
+  .calculadora {
+    padding: 1.1rem 0.9rem;
   }
 
-  .teclado-grade {
-    grid-template-columns: repeat(auto-fill, minmax(2.9rem, 1fr));
+  .calculadora-display {
+    padding: 0.7rem 0.85rem;
+  }
+
+  .calculadora-grade {
     gap: 0.4rem;
   }
 
-  .teclado-grade-controles {
-    max-width: 100%;
+  .tecla {
+    font-size: 0.95rem;
+    min-height: 2.75rem;
+    border-radius: 10px;
   }
 
-  .botao-teclado {
-    font-size: 0.85rem;
-    padding: 0.45rem 0.3rem;
-    min-height: 2.3rem;
+  #botao-calcular.tecla-igual {
+    font-size: 1.25rem;
+    min-height: 2.75rem;
   }
 }
 
