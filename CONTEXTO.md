@@ -141,6 +141,9 @@ Situação das branches no GitHub:
 - `feature/etapa-10-entrada-imagem`: Etapa 10 completa (backend e
   frontend — detalhes na seção 9), push feito, **sem PR aberto ainda**
   (decisão pendente).
+- `feature/teclado-simbolos`: teclado de símbolos na página de texto, fora
+  do plano original (detalhes na seção 9), push feito, **sem PR aberto
+  ainda** (decisão pendente).
 
 Não presuma: rode `git fetch` e confira `git log --oneline --graph --all`.
 
@@ -587,3 +590,50 @@ manual (o navegador define o boundary do multipart sozinho) batem.
 Falta: decidir sobre o PR de `feature/etapa-10-entrada-imagem` (perguntar
 antes de abrir/mesclar, como sempre) e, se quiserem, apagar as branches
 remotas já mescladas.
+
+**3. Teclado de símbolos — concluído, sem PR ainda.** Branch
+`feature/teclado-simbolos`, criada a partir da `main` já com o redesign
+visual e a Etapa 10 mesclados. Dois commits:
+
+- `938f78b`: primeira versão — painel escondido por padrão atrás de um
+  botão "Mostrar teclado de símbolos" (disclosure acessível,
+  aria-expanded/aria-controls), com botões para as funções que o motor
+  aceita (sen, cos, tg, ln, raiz, arcsen, arccos, arctg, piso, teto),
+  módulo com barras, parênteses, operadores, constantes/variável,
+  dígitos, apagar e limpar. `js/teclado.js` (novo) rastreia qual dos
+  dois campos (`campo-funcao`/`campo-ponto`) foi focado por último e
+  insere ali, na posição real do cursor; botões de função envolvem uma
+  seleção existente ou, sem seleção, inserem a forma vazia com o
+  cursor já dentro dos parênteses/barras.
+- `9b9269b`: redesenho como calculadora sempre visível (sem o
+  disclosure de antes) — "bezel" escuro com os dois campos por cima e
+  uma grade de teclas por baixo, com relevo. Reduz o conjunto de
+  teclas em relação à primeira versão: saem sen/cos/tg/ln/arcsen/
+  arccos/arctg/piso/teto e o "^" genérico (continuam dando para
+  digitar à mão); entram x², √ (continua envolvendo seleção), π, e, ∞,
+  dígitos, operadores e apagar/limpar, numa grade de calculadora.
+  Acrescenta `marcarCampoAtivo`: destaque visual permanente (não só o
+  anel de foco, que some ao clicar numa tecla) de qual campo vai
+  receber a próxima tecla — corrige um bug relatado pela dona do
+  projeto (clicar em "x tende a" e depois numa tecla pensando na
+  função inseria no campo errado, sem aviso).
+
+Achado testando a página de verdade: depois de editar os 3 arquivos
+(`estilo.css`, `index.html`, `js/teclado.js`) repetidas vezes para o
+redesenho, os cliques pararam de fazer efeito na aba já aberta da dona
+do projeto — sintoma de cache do navegador (JS/HTML antigos
+desencontrados), não bug do código. Confirmado testando com Chromium
+de verdade (ver abaixo): hard refresh (Ctrl+Shift+R) resolveu.
+
+Verificação do redesenho (`9b9269b`): pela primeira vez nesta branch
+havia Chromium disponível no ambiente (via Playwright, já instalado em
+cache). Testado de verdade, não só por leitura de código: simulação
+com jsdom (clique via `dispatchEvent`, inserir "x" e depois "x²" dá
+"x^2", destaque do campo ativo liga) e depois no Chromium real,
+servido pelo `http.server` já no ar em `127.0.0.1:5500` —
+`getComputedStyle` confirma texto branco visível sobre o bezel escuro
+(sem `display:none`/`opacity:0`/sobreposição) e screenshot confere o
+resultado batendo com o esperado.
+
+Falta: decidir sobre o PR de `feature/teclado-simbolos` (perguntar
+antes de abrir/mesclar, como sempre).
