@@ -94,8 +94,8 @@ calculadora-limites/
 8. Gráfico — **FEITA**
 9. Testes de todos os tipos e revisão das explicações — **FEITA**
 10. Entrada por imagem (colar/enviar uma foto da conta; extração da função e
-    do ponto via API de visão do Gemini) — **FEITA** (branch
-    `feature/etapa-10-entrada-imagem`, ainda sem PR; ver seção 9)
+    do ponto via API de visão do Gemini) — **FEITA e já mesclada na `main`**
+    (PR #20; ver seção 9)
 
 ## 5. Estado atual
 
@@ -139,11 +139,17 @@ Situação das branches no GitHub:
   #18, **já mesclado na `main`** (commit de merge `3bd278d`). Só falta
   apagar o remoto, se quiserem.
 - `feature/etapa-10-entrada-imagem`: Etapa 10 completa (backend e
-  frontend — detalhes na seção 9), push feito, **sem PR aberto ainda**
-  (decisão pendente).
+  frontend — detalhes na seção 9), **já mesclada na `main` via PR #20**
+  (commit de merge `0273da3`; antes dele, um PR #19 com o mesmo título
+  também aparece mesclado no histórico — mesma branch, não é um trabalho
+  diferente). Todas as 10 etapas (as 9 originais + a entrada por imagem)
+  estão, portanto, na `main`.
 - `feature/teclado-simbolos`: teclado de símbolos na página de texto, fora
-  do plano original (detalhes na seção 9), push feito, **sem PR aberto
-  ainda** (decisão pendente).
+  do plano original (detalhes na seção 9). A primeira versão (painel
+  escondido, `938f78b`) **já está mesclada na `main` via PR #21** (commit
+  de merge `db47952`); a branch segue viva com o redesenho da tecla como
+  calculadora sempre visível (`9b9269b` e `5e1b872`), ainda sem PR (sendo
+  aberto agora).
 
 Não presuma: rode `git fetch` e confira `git log --oneline --graph --all`.
 
@@ -509,9 +515,8 @@ a entrada, se sobrar tempo.
   (o motor nunca afirma um valor errado; só fica honesto "sem concluir" nos
   casos fora de escopo).
 
-Depois do fim da Etapa 9, a dona do projeto pediu dois pontos extras, fora do
-plano original. Os dois estão implementados e testados; falta só decidir
-sobre os PRs.
+Depois do fim da Etapa 9, a dona do projeto foi pedindo pontos extras, fora
+do plano original, um de cada vez. Veja cada um abaixo.
 
 **1. Melhoria visual do frontend — concluída e já mesclada.** Tema
 claro/escuro, animações, microinterações, cartões com sombra. PR #18,
@@ -519,10 +524,11 @@ mesclado na `main` (commit de merge `3bd278d`), incluindo a correção do
 indicador de carregando que ficava visível antes de calcular
 (`.carregando:not([hidden])`, achada testando a página de verdade).
 
-**2. Etapa 10 — entrada por imagem (concluída, sem PR ainda).** Branch
+**2. Etapa 10 — entrada por imagem (concluída e já mesclada).** Branch
 `feature/etapa-10-entrada-imagem`, criada a partir da `main` (antes do PR
 #18) e depois atualizada com `git merge main` para já incluir o redesign
-visual — dois commits:
+visual — dois commits, mesclados na `main` via PR #20 (commit de merge
+`0273da3`):
 
 - `744eb93` (backend, agente `api-backend`): rota nova `POST /limite/imagem`
   (multipart, campo `imagem`, até 5 MB, PNG/JPEG/WEBP). `app/visao/gemini.py`
@@ -587,13 +593,12 @@ chamada `fetch`+`FormData` que `js/api.js` faz, contra o backend real, para
 confirmar que o nome do campo (`imagem`) e a ausência de `Content-Type`
 manual (o navegador define o boundary do multipart sozinho) batem.
 
-Falta: decidir sobre o PR de `feature/etapa-10-entrada-imagem` (perguntar
-antes de abrir/mesclar, como sempre) e, se quiserem, apagar as branches
-remotas já mescladas.
-
-**3. Teclado de símbolos — concluído, sem PR ainda.** Branch
-`feature/teclado-simbolos`, criada a partir da `main` já com o redesign
-visual e a Etapa 10 mesclados. Dois commits:
+**3. Teclado de símbolos.** Branch `feature/teclado-simbolos`, criada a
+partir da `main` já com o redesign visual e a Etapa 10 mesclados. A
+primeira versão (`938f78b`) já está mesclada na `main` via PR #21 (commit
+de merge `db47952`); a branch seguiu viva depois disso com o redesenho
+(`9b9269b` de código, `5e1b872` só de documentação), ainda sem mesclar.
+Commits de código:
 
 - `938f78b`: primeira versão — painel escondido por padrão atrás de um
   botão "Mostrar teclado de símbolos" (disclosure acessível,
